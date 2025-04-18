@@ -1,0 +1,54 @@
+name: skl_leave
+description: "A new Flutter project."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  animated_text_kit: ^4.2.3
+  cupertino_icons: ^1.0.8
+  font_awesome_flutter: ^10.8.0
+  fl_chart: ^0.63.0
+  animate_do: ^3.0.2
+  syncfusion_flutter_charts: ^27.1.53
+  flutter_custom_clippers: ^2.0.0
+  fluttertoast: ^8.2.2
+  table_calendar: ^3.0.9
+  http: any
+  crypto: ^3.0.1
+  dropdown_search: ^6.0.1
+  intl: ^0.18.0
+  shared_preferences: ^2.5.2
+  flutter_launcher_icons: ^0.14.1
+  dropdown_button2: ^1.9.0
+  firebase_messaging: ^15.2.4
+  firebase_core: ^3.12.1
+  cloud_firestore: ^5.6.5
+  device_info_plus: ^10.0.0
+  google_fonts: ^6.1.0
+  url_launcher: ^6.0.9
+  webview_flutter: ^4.4.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icon/avatar.png
+    - assets/icon/logo.jpeg
+flutter_launcher_icons:
+  android: "logo"
+  ios: true
+  image_path: "assets/icon/logo.jpeg"
+  adaptive_icon_foreground: "assets/icon/logo.jpeg" # Set the foreground image (same or different from image_path)
+  adaptive_icon_background: "#5F8F3C"
+  remove_alpha_ios: true
+  min_sdk_android: 21
