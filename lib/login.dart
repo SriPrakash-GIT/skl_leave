@@ -25,11 +25,12 @@ class LoginPage extends StatefulWidget {
 }
 
 var globalIDcardNo = "";
-
+String _adminPassword = '123456';
 String _ipAddress = '';
 String _port = '';
 String _version = '';
-String _adminPassword = "admin@123";
+String _NewPwd = '';
+String _comPwd = '';
 
 class _LoginPageState extends State<LoginPage> {
   final _formKey = GlobalKey<FormState>();
@@ -43,8 +44,9 @@ class _LoginPageState extends State<LoginPage> {
   final ipController = TextEditingController(text: _ipAddress);
   final portController = TextEditingController(text: _port);
   final versionController = TextEditingController(text: _version);
-  final serverPassWord = TextEditingController(text: _port);
-  final serverConPassWord = TextEditingController(text: _version);
+  final serverPassWord = TextEditingController(text: _NewPwd);
+  final serverConPassWord = TextEditingController(text: _comPwd);
+
   @override
   void initState() {
     super.initState();
@@ -58,11 +60,14 @@ class _LoginPageState extends State<LoginPage> {
       _ipAddress = prefs.getString('server_ip') ?? '';
       _port = prefs.getString('server_port') ?? '';
       _version = prefs.getString('server_version') ?? '';
-      ipAddress = 'http://$_ipAddress:$_port/$version';
+      _NewPwd = prefs.getString('server_NewPwd') ?? '';
+      _comPwd = prefs.getString('server_comPwd') ?? '';
+      ipAddress = 'http://$_ipAddress:$_port/$_version';
       ipController.text = _ipAddress;
-      ipController.text = _ipAddress;
-      ipController.text = _ipAddress;
-      ipController.text = _ipAddress;
+      portController.text = _port;
+      versionController.text = _version;
+      serverPassWord.text = _NewPwd;
+      serverConPassWord.text = _comPwd;
     });
   }
 
@@ -99,24 +104,6 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  Future<void> getNotificationToken(fcmToken, deviceId) async {
-    String cutTableApi = "$ipAddress/api/userdevice";
-    try {
-      final response = await http.post(Uri.parse(cutTableApi),
-          headers: <String, String>{
-            'Content-Type': 'application/json; charset=UTF-8',
-          },
-          body: jsonEncode({"deviceToken": fcmToken, "deviceID": deviceId}));
-
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
-      }
-    } catch (e) {
-      _showErrorDialog("Connection Error", "Please ReOpen this Page");
-      print(e);
-    }
-  }
-
   void _showErrorDialog(String title, String content) {
     showDialog(
       context: context,
@@ -141,30 +128,12 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => _showAdminPasswordDialog = true);
   }
 
-  void _verifyAdminPassword() {
-    if (_adminPasswordController.text == _adminPassword) {
-      setState(() {
-        _showAdminPasswordDialog = false;
-        _adminPasswordController.clear();
-      });
-      _showServerSettingsDialog();
-      _loadServerSettings();
-    } else {
-      Fluttertoast.showToast(
-        msg: "Incorrect admin password",
-        toastLength: Toast.LENGTH_SHORT,
-        gravity: ToastGravity.CENTER,
-        backgroundColor: Colors.red,
-        textColor: Colors.white,
-      );
-      _adminPasswordController.clear();
-    }
-  }
-
   void _showServerSettingsDialog() async {
     showDialog(
       context: context,
       builder: (BuildContext context) {
+        serverPassWord.text = _adminPassword;
+        serverConPassWord.text = _adminPassword;
         return Dialog(
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.0)),
@@ -199,7 +168,7 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 10),
                 TextFormField(
                   controller: ipController,
                   decoration: InputDecoration(
@@ -226,7 +195,7 @@ class _LoginPageState extends State<LoginPage> {
                   },
                   onChanged: (value) => _ipAddress = value.trim(),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 10),
                 TextFormField(
                   controller: portController,
                   decoration: InputDecoration(
@@ -256,13 +225,13 @@ class _LoginPageState extends State<LoginPage> {
                   },
                   onChanged: (value) => _port = value.trim(),
                 ),
+                const SizedBox(height: 10),
                 TextFormField(
-                  controller: serverPassWord,
+                  controller: versionController,
                   decoration: InputDecoration(
                     labelText: 'Version',
                     labelStyle: TextStyle(),
-                    prefixIcon:
-                        Icon(Icons.lock_outline, color: Colors.deepOrange),
+                    prefixIcon: Icon(Icons.code, color: Colors.deepOrange),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide(
@@ -285,28 +254,15 @@ class _LoginPageState extends State<LoginPage> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 10),
                 TextFormField(
                   controller: serverPassWord,
-                  obscureText: !_isPasswordVisible,
+                  obscureText: _isPasswordVisible,
                   decoration: InputDecoration(
                     labelText: 'Password',
                     labelStyle: TextStyle(),
                     prefixIcon:
                         Icon(Icons.lock_outline, color: Colors.deepOrange),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _isPasswordVisible
-                            ? Icons.visibility
-                            : Icons.visibility_off,
-                        color: Colors.grey.shade600,
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          _isPasswordVisible = !_isPasswordVisible;
-                        });
-                      },
-                    ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide(
@@ -329,28 +285,15 @@ class _LoginPageState extends State<LoginPage> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 10),
                 TextFormField(
                   controller: serverConPassWord,
-                  obscureText: !_isPasswordVisible,
+                  obscureText: _isPasswordVisible,
                   decoration: InputDecoration(
-                    labelText: 'Password',
+                    labelText: 'Confirm Password',
                     labelStyle: TextStyle(),
                     prefixIcon:
                         Icon(Icons.lock_outline, color: Colors.deepOrange),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _isPasswordVisible
-                            ? Icons.visibility
-                            : Icons.visibility_off,
-                        color: Colors.grey.shade600,
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          _isPasswordVisible = !_isPasswordVisible;
-                        });
-                      },
-                    ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide(
@@ -360,11 +303,10 @@ class _LoginPageState extends State<LoginPage> {
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide(
+                        color: Colors.deepOrange,
                         width: 2,
                       ),
                     ),
-                    filled: true,
-                    fillColor: Colors.grey[50],
                   ),
                   validator: (value) {
                     if (value == null || value.isEmpty) {
@@ -373,7 +315,7 @@ class _LoginPageState extends State<LoginPage> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 15),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
@@ -400,9 +342,18 @@ class _LoginPageState extends State<LoginPage> {
                       child: const Text('SAVE'),
                       onPressed: () {
                         if (ipController.text.isNotEmpty &&
-                            portController.text.isNotEmpty) {
+                            portController.text.isNotEmpty &&
+                            versionController.text.isNotEmpty &&
+                            serverPassWord.text.isNotEmpty &&
+                            serverConPassWord.text.isNotEmpty) {
+                          sendNewChangePassword(
+                              serverConPassWord.text.toString());
                           _saveServerSettings(
-                              ipController.text, portController.text);
+                              ipController.text,
+                              portController.text,
+                              versionController.text,
+                              serverPassWord.text,
+                              serverConPassWord.text);
                           Navigator.of(context).pop();
 
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -436,46 +387,117 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  Future<void> _saveServerSettings(String ip1, String port1) async {
+  Future<void> _saveServerSettings(
+    String ip1,
+    String port1,
+    String version1,
+    String newPwd,
+    String conPwd,
+  ) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setString('server_ip', ip1);
     await prefs.setString('server_port', port1);
+    await prefs.setString('server_version', version1);
+    await prefs.setString('server_NewPwd', newPwd);
+    await prefs.setString('server_comPwd', conPwd);
+    await prefs.getString('DeviceIdToken');
 
     ip = ip1;
     port = port1;
-    ipAddress = 'http://$ip:$port/';
+    version = version1;
+    ipAddress = 'http://$ip:$port/$version';
   }
 
   Future<void> fetchCheckPassword(
-      String userid, String hashedPassword, String deviceId) async {
+      String userid, String hashedPassword, String? deviceId) async {
     String url = "$ipAddress/api/LoginData";
     try {
+      print(deviceId);
+      print("===================================000111print(deviceId);");
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+
+      deviceId = await prefs.getString('DeviceIdToken');
       final response = await http.post(Uri.parse(url),
           headers: <String, String>{
             'Content-Type': 'application/json; charset=UTF-8',
           },
           body: jsonEncode({
             "idcardno": userid,
-            "deviceId": deviceId,
+            "deviceId": deviceId == null ? "" : deviceId,
             "password": hashedPassword,
           }));
 
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
-
-        if (data["status"] == true) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => HomeScreen()),
-          );
-        } else {
-          _showErrorDialog("Error", data["message"]);
-        }
+      final Map<String, dynamic> data = json.decode(response.body);
+      print(data);
+      if (data["status"] == true) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => HomeScreen()),
+        );
+      } else {
+        _showErrorDialog("Login Failed", data["message"]);
       }
     } catch (e) {
       _showErrorDialog("Connection Error", "Please ReOpen this Page");
       print(e);
     }
+  }
+
+  Future<void> sendAuthPassword(String AutPass) async {
+    var bytes = utf8.encode(AutPass); // data being hashed
+    var md5Hash = md5.convert(bytes).toString();
+    String url = "$ipAddress/api/adminLog/$md5Hash";
+    try {
+      final response = await http.get(Uri.parse(url));
+
+      final Map<String, dynamic> data = json.decode(response.body);
+
+      if (data["status"] == true) {
+        setState(() {
+          _showAdminPasswordDialog = false;
+          _adminPasswordController.clear();
+          _adminPassword = AutPass;
+        });
+        _showServerSettingsDialog();
+        _loadServerSettings();
+      } else {
+        _showErrorDialog("Admin Login Failed", data["message"]);
+      }
+    } catch (e) {
+      if (_adminPasswordController.text == _adminPassword) {
+        setState(() {
+          _showAdminPasswordDialog = false;
+          _adminPasswordController.clear();
+        });
+        _showServerSettingsDialog();
+        _loadServerSettings();
+      } else {
+        Fluttertoast.showToast(
+          msg: "Please Check the Network Connection   ",
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.CENTER,
+          backgroundColor: Colors.red,
+          textColor: Colors.white,
+        );
+        _adminPasswordController.clear();
+      }
+    }
+  }
+
+  Future<void> sendNewChangePassword(String AutPass) async {
+    var bytes = utf8.encode(AutPass); // data being hashed
+    var md5Hash = md5.convert(bytes).toString();
+    String url = "$ipAddress/api/changeAdminPass/$md5Hash";
+    try {
+      final response = await http.get(Uri.parse(url));
+
+      final Map<String, dynamic> data = json.decode(response.body);
+
+      if (data["status"] == true) {
+        print("=================send con pwd======================");
+        _adminPassword = AutPass;
+      }
+    } catch (e) {}
   }
 
   @override
@@ -750,7 +772,10 @@ class _LoginPageState extends State<LoginPage> {
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.deepOrange,
                                 ),
-                                onPressed: _verifyAdminPassword,
+                                onPressed: () {
+                                  sendAuthPassword(
+                                      _adminPasswordController.text.toString());
+                                },
                                 child: Text('VERIFY'),
                               ),
                             ),

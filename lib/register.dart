@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'globalVariable.dart';
 import 'main.dart';
@@ -64,6 +65,11 @@ class _RegisterPageState extends State<RegisterPage> {
   Future<void> sendReqReg(String username, String hashedPassword,
       String deviceId, String IdcardNo, dob, doj) async {
     String url = "$ipAddress/api/Registerinsert";
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    String? getToken = await prefs.getString("DeviceIdToken");
+    deviceId = getToken == null ? "" : getToken;
+    print(deviceId);
+
     try {
       var bytes = utf8.encode(password); // data being hashed
       var md5Hash = md5.convert(bytes).toString();
@@ -214,7 +220,7 @@ class _RegisterPageState extends State<RegisterPage> {
                       ),
                       SizedBox(height: 24),
                       _buildTextField(
-                        label: 'User ID',
+                        label: 'Employee Id',
                         icon: Icons.person_outline,
                         onSaved: (value) => userId = value!,
                         validator: (value) =>

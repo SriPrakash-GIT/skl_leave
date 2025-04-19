@@ -6,7 +6,7 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE"/>
     <application
-        android:label="Skl_LeaveApp"
+        android:label="Skl_HRApp"
         android:name="${applicationName}"
         android:icon="@mipmap/logo"
         android:usesCleartextTraffic="true"

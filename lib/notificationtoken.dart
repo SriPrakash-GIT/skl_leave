@@ -11,6 +11,7 @@ class PushNotification {
       sound: true,
     );
     fcmToken = await firebaseMessaging.getToken();
+
     print("FCM Token: $fcmToken");
   }
 }
