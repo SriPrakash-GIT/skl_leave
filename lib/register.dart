@@ -65,9 +65,9 @@ class _RegisterPageState extends State<RegisterPage> {
   Future<void> sendReqReg(String username, String hashedPassword,
       String deviceId, String IdcardNo, dob, doj) async {
     String url = "$ipAddress/api/Registerinsert";
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    String? getToken = await prefs.getString("DeviceIdToken");
-    deviceId = getToken == null ? "" : getToken;
+    // SharedPreferences prefs = await SharedPreferences.getInstance();
+    // String? getToken = await prefs.getString("DeviceIdToken");
+    // deviceId = getToken == null ? "" : getToken;
     print(deviceId);
 
     try {
@@ -84,9 +84,9 @@ class _RegisterPageState extends State<RegisterPage> {
             "DEVICEID": deviceId,
             "DOB": dob,
             "DOJ": doj,
-            "TYPE": "ANDROID"
+            "TYPE": deviceType
           }));
-
+      print(deviceId.toString());
       final Map<String, dynamic> data = json.decode(response.body);
       if (data["status"] == true) {
         ScaffoldMessenger.of(context).showSnackBar(

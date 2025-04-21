@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
-
+import 'package:flutter_udid/flutter_udid.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/cupertino.dart';
@@ -16,21 +16,23 @@ import 'login.dart';
 import 'notificationtoken.dart';
 
 late String? deviceId = "";
+String? deviceType;
+
 late var chk = false;
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await PushNotification.init();
 
-  // String? deviceId = await getMobileDeviceId();
-  // print('Device ID: $deviceId');
-  getNotificationToken(fcmToken, fcmToken);
+  await getDeviceID();
+
+  getNotificationToken(fcmToken, deviceId);
 
   final prefs = await SharedPreferences.getInstance();
-  await prefs.setString("deviceToken", fcmToken);
+  // await prefs.setString("deviceToken", fcmToken);
   String? savedEmployeeId = prefs.getString('employeeId');
   String? savedPassword = prefs.getString('password');
-  String? savedToken = prefs.getString('deviceToken');
+  // String? deviceNewId = prefs.getString('DeviceIdToken');
 
   SharedPreferences prefs1 = await SharedPreferences.getInstance();
   await prefs1.setString('server_ip', ip);
@@ -45,8 +47,6 @@ Future<void> main() async {
 }
 
 Future<void> getNotificationToken(fcmToken, deviceId) async {
-  print(fcmToken +
-      "---------------------fcmToken-----------------------------------------------------");
   String cutTableApi = "$ipAddress/api/userdevice";
   SharedPreferences prefs = await SharedPreferences.getInstance();
   try {
@@ -54,11 +54,11 @@ Future<void> getNotificationToken(fcmToken, deviceId) async {
         headers: <String, String>{
           'Content-Type': 'application/json; charset=UTF-8',
         },
-        body: jsonEncode({"deviceToken": fcmToken, "deviceID": fcmToken}));
+        body: jsonEncode({"deviceToken": fcmToken, "deviceID": deviceId}));
 
     if (response.statusCode == 200) {
       final Map<String, dynamic> data = json.decode(response.body);
-      await prefs.setString('DeviceIdToken', fcmToken);
+      // await prefs.setString('DeviceIdToken', fcmToken);
     }
   } catch (e) {
     _showErrorDialog("Connection Error", "Please ReOpen this Page");
@@ -87,34 +87,19 @@ void _showErrorDialog(String title, String content) {
   );
 }
 
-Future<String?> getMobileDeviceId() async {
-  final deviceInfoPlugin = DeviceInfoPlugin();
-
+Future<void> getDeviceID() async {
   try {
-    if (Platform.isAndroid) {
-      final androidInfo = await deviceInfoPlugin.androidInfo;
-      print(androidInfo.hardware);
-      print(androidInfo.host);
-      print(androidInfo.fingerprint);
-      print(androidInfo.device);
-      print(androidInfo.serialNumber);
-      print(androidInfo.data);
-      print(androidInfo.id);
-      print(androidInfo.fingerprint);
-
-      print(
-          "--------------------------------------------------------------------------------");
-      return androidInfo.id; // Android device ID (changes on factory reset)
-    } else if (Platform.isIOS) {
-      final iosInfo = await deviceInfoPlugin.iosInfo;
-      return iosInfo
-          .identifierForVendor; // iOS device UUID (changes on reinstall)
-    }
+    deviceId = await FlutterUdid.udid;
+    deviceType = Platform.isAndroid
+        ? 'ANDROID'
+        : Platform.isIOS
+            ? 'IOS'
+            : 'Unknown';
+    print("Device UDID: $deviceId");
+    print("Device deviceType: $deviceType");
   } catch (e) {
-    print('Failed to get device ID: $e');
+    print("Failed to get UDID: $e");
   }
-
-  return null;
 }
 
 class MyApp extends StatelessWidget {
@@ -132,7 +117,6 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       routes: {
         '/home': (context) => HomeScreen(),
-        '/RegisterPage': (context) => RegisterPage(),
       },
     );
   }

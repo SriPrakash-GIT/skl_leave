@@ -24,7 +24,7 @@ class LoginPage extends StatefulWidget {
   State<LoginPage> createState() => _LoginPageState();
 }
 
-var globalIDcardNo = "";
+String globalIDcardNo = "";
 String _adminPassword = '123456';
 String _ipAddress = '';
 String _port = '';
@@ -91,11 +91,7 @@ class _LoginPageState extends State<LoginPage> {
         await fetchCheckPassword(
             _emailController.text, digest.toString(), deviceId!);
 
-        if (_rememberMe) {
-          SharedPreferences prefs = await SharedPreferences.getInstance();
-          await prefs.setString('employeeId', _emailController.text);
-          await prefs.setString('password', _passwordController.text);
-        }
+        if (_rememberMe) {}
       } finally {
         if (mounted) {
           setState(() => _isLoading = false);
@@ -135,247 +131,254 @@ class _LoginPageState extends State<LoginPage> {
         serverPassWord.text = _adminPassword;
         serverConPassWord.text = _adminPassword;
         return Dialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.0)),
-          elevation: 0,
-          backgroundColor: Colors.transparent,
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.rectangle,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16.0)),
+            elevation: 0,
+            backgroundColor: Colors.transparent,
+            child: SingleChildScrollView(
+              // Add this
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.rectangle,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                constraints: BoxConstraints(
+                  // Add constraints if needed
+                  maxHeight: MediaQuery.of(context).size.height * 0.8,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min, // Keep this as min
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Text(
-                      'Server Configuration',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.deepOrange,
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Server Configuration',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.deepOrange,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close, size: 18),
+                          onPressed: () => Navigator.of(context).pop(),
+                          color: Colors.grey,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 5),
+                    TextFormField(
+                      controller: ipController,
+                      decoration: InputDecoration(
+                        labelText: 'Server IP',
+                        hintText: 'e.g.192.168.1.100',
+                        prefixIcon:
+                            const Icon(Icons.dns, color: Colors.deepOrange),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey[50],
                       ),
+                      keyboardType: TextInputType.url,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter server IP';
+                        }
+                        final ipRegex =
+                            RegExp(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$');
+                        if (!ipRegex.hasMatch(value)) {
+                          return 'Enter valid IP address';
+                        }
+                        return null;
+                      },
+                      onChanged: (value) => _ipAddress = value.trim(),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.close, size: 18),
-                      onPressed: () => Navigator.of(context).pop(),
-                      color: Colors.grey,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                TextFormField(
-                  controller: ipController,
-                  decoration: InputDecoration(
-                    labelText: 'Server IP',
-                    hintText: 'e.g.192.168.1.100',
-                    prefixIcon: const Icon(Icons.dns, color: Colors.deepOrange),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    filled: true,
-                    fillColor: Colors.grey[50],
-                  ),
-                  keyboardType: TextInputType.url,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter server IP';
-                    }
-                    final ipRegex =
-                        RegExp(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$');
-                    if (!ipRegex.hasMatch(value)) {
-                      return 'Enter valid IP address';
-                    }
-                    return null;
-                  },
-                  onChanged: (value) => _ipAddress = value.trim(),
-                ),
-                const SizedBox(height: 10),
-                TextFormField(
-                  controller: portController,
-                  decoration: InputDecoration(
-                    labelText: 'Port',
-                    hintText: '8080',
-                    prefixIcon:
-                        const Icon(Icons.numbers, color: Colors.deepOrange),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    filled: true,
-                    fillColor: Colors.grey[50],
-                  ),
-                  keyboardType: TextInputType.number,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter port number';
-                    }
-                    if (int.tryParse(value) == null) {
-                      return 'Enter valid port number';
-                    }
-                    final port = int.parse(value);
-                    if (port < 1 || port > 65535) {
-                      return 'Port must be 1-65535';
-                    }
-                    return null;
-                  },
-                  onChanged: (value) => _port = value.trim(),
-                ),
-                const SizedBox(height: 10),
-                TextFormField(
-                  controller: versionController,
-                  decoration: InputDecoration(
-                    labelText: 'Version',
-                    labelStyle: TextStyle(),
-                    prefixIcon: Icon(Icons.code, color: Colors.deepOrange),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(
-                        color: Colors.grey.shade300,
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: portController,
+                      decoration: InputDecoration(
+                        labelText: 'Port',
+                        hintText: '8080',
+                        prefixIcon:
+                            const Icon(Icons.numbers, color: Colors.deepOrange),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey[50],
                       ),
+                      keyboardType: TextInputType.number,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter port number';
+                        }
+                        if (int.tryParse(value) == null) {
+                          return 'Enter valid port number';
+                        }
+                        final port = int.parse(value);
+                        if (port < 1 || port > 65535) {
+                          return 'Port must be 1-65535';
+                        }
+                        return null;
+                      },
+                      onChanged: (value) => _port = value.trim(),
                     ),
-                    filled: true,
-                    fillColor: Colors.grey[50],
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(
-                        width: 2,
-                      ),
-                    ),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter your password';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 10),
-                TextFormField(
-                  controller: serverPassWord,
-                  obscureText: _isPasswordVisible,
-                  decoration: InputDecoration(
-                    labelText: 'Password',
-                    labelStyle: TextStyle(),
-                    prefixIcon:
-                        Icon(Icons.lock_outline, color: Colors.deepOrange),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(
-                        color: Colors.grey.shade300,
-                      ),
-                    ),
-                    filled: true,
-                    fillColor: Colors.grey[50],
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(
-                        width: 2,
-                      ),
-                    ),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter your password';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 10),
-                TextFormField(
-                  controller: serverConPassWord,
-                  obscureText: _isPasswordVisible,
-                  decoration: InputDecoration(
-                    labelText: 'Confirm Password',
-                    labelStyle: TextStyle(),
-                    prefixIcon:
-                        Icon(Icons.lock_outline, color: Colors.deepOrange),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(
-                        color: Colors.grey.shade300,
-                      ),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(
-                        color: Colors.deepOrange,
-                        width: 2,
-                      ),
-                    ),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter your password';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 15),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      style: TextButton.styleFrom(
-                        foregroundColor: Colors.grey[700],
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 12),
-                      ),
-                      child: const Text('CANCEL'),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                    const SizedBox(width: 8),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.deepOrange,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 24, vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: versionController,
+                      decoration: InputDecoration(
+                        labelText: 'Version',
+                        labelStyle: TextStyle(),
+                        prefixIcon: Icon(Icons.code, color: Colors.deepOrange),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            color: Colors.grey.shade300,
+                          ),
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey[50],
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            width: 2,
+                          ),
                         ),
                       ),
-                      child: const Text('SAVE'),
-                      onPressed: () {
-                        if (ipController.text.isNotEmpty &&
-                            portController.text.isNotEmpty &&
-                            versionController.text.isNotEmpty &&
-                            serverPassWord.text.isNotEmpty &&
-                            serverConPassWord.text.isNotEmpty) {
-                          sendNewChangePassword(
-                              serverConPassWord.text.toString());
-                          _saveServerSettings(
-                              ipController.text,
-                              portController.text,
-                              versionController.text,
-                              serverPassWord.text,
-                              serverConPassWord.text);
-                          Navigator.of(context).pop();
-
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: const Text(
-                                  'Server settings saved successfully!'),
-                              backgroundColor: Colors.green,
-                              behavior: SnackBarBehavior.floating,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                            ),
-                          );
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter your password';
                         }
+                        return null;
                       },
+                    ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: serverPassWord,
+                      obscureText: _isPasswordVisible,
+                      decoration: InputDecoration(
+                        labelText: 'Password',
+                        labelStyle: TextStyle(),
+                        prefixIcon:
+                            Icon(Icons.lock_outline, color: Colors.deepOrange),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            color: Colors.grey.shade300,
+                          ),
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey[50],
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter your password';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: serverConPassWord,
+                      obscureText: _isPasswordVisible,
+                      decoration: InputDecoration(
+                        labelText: 'Confirm Password',
+                        labelStyle: TextStyle(),
+                        prefixIcon:
+                            Icon(Icons.lock_outline, color: Colors.deepOrange),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            color: Colors.grey.shade300,
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            color: Colors.deepOrange,
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter your password';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 15),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.grey[700],
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 12),
+                          ),
+                          child: const Text('CANCEL'),
+                          onPressed: () => Navigator.of(context).pop(),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.deepOrange,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 24, vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          child: const Text('SAVE'),
+                          onPressed: () {
+                            if (ipController.text.isNotEmpty &&
+                                portController.text.isNotEmpty &&
+                                versionController.text.isNotEmpty &&
+                                serverPassWord.text.isNotEmpty &&
+                                serverConPassWord.text.isNotEmpty) {
+                              sendNewChangePassword(
+                                  serverConPassWord.text.toString());
+                              _saveServerSettings(
+                                  ipController.text,
+                                  portController.text,
+                                  versionController.text,
+                                  serverPassWord.text,
+                                  serverConPassWord.text);
+                              Navigator.of(context).pop();
+
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: const Text(
+                                      'Server settings saved successfully!'),
+                                  backgroundColor: Colors.green,
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                              );
+                            }
+                          },
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
-            ),
-          ),
-        );
+              ),
+            ));
       },
     );
   }
@@ -409,27 +412,30 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> fetchCheckPassword(
-      String userid, String hashedPassword, String? deviceId) async {
+      String userid, String hashedPassword, String deviceId) async {
     String url = "$ipAddress/api/LoginData";
     try {
       print(deviceId);
       print("===================================000111print(deviceId);");
-      SharedPreferences prefs = await SharedPreferences.getInstance();
+      // SharedPreferences prefs = await SharedPreferences.getInstance();
 
-      deviceId = await prefs.getString('DeviceIdToken');
+      // deviceId = await prefs.getString('DeviceIdToken');
       final response = await http.post(Uri.parse(url),
           headers: <String, String>{
             'Content-Type': 'application/json; charset=UTF-8',
           },
           body: jsonEncode({
             "idcardno": userid,
-            "deviceId": deviceId == null ? "" : deviceId,
+            "deviceId": deviceId.toString(),
             "password": hashedPassword,
           }));
-
+      print(deviceId.toString());
       final Map<String, dynamic> data = json.decode(response.body);
       print(data);
       if (data["status"] == true) {
+        SharedPreferences prefs = await SharedPreferences.getInstance();
+        await prefs.setString('employeeId', _emailController.text);
+        await prefs.setString('password', _passwordController.text);
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => HomeScreen()),
@@ -447,6 +453,7 @@ class _LoginPageState extends State<LoginPage> {
     var bytes = utf8.encode(AutPass); // data being hashed
     var md5Hash = md5.convert(bytes).toString();
     String url = "$ipAddress/api/adminLog/$md5Hash";
+    print(url);
     try {
       final response = await http.get(Uri.parse(url));
 
