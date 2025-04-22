@@ -15,17 +15,17 @@ class PushNotification {
     );
 
     if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-      print('🔔 Push notification permission granted');
-
-      // iOS-specific: Wait for APNs token
-      if (Platform.isIOS) {
-        fcmToken = await firebaseMessaging.getAPNSToken();
-        if (fcmToken == null) {
-          print("⚠️ APNs token not yet available.");
-        } else {
-          print("✅ APNs token: $fcmToken");
-        }
-      }
+      // print('🔔 Push notification permission granted');
+      //
+      // // iOS-specific: Wait for APNs token
+      // if (Platform.isIOS) {
+      //   fcmToken = await firebaseMessaging.getAPNSToken();
+      //   if (fcmToken == null) {
+      //     print("⚠️ APNs token not yet available.");
+      //   } else {
+      //     print("✅ APNs token: $fcmToken");
+      //   }
+      // }
 
       // Get the FCM token
       fcmToken = await firebaseMessaging.getToken();

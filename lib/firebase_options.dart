@@ -22,8 +22,8 @@ class DefaultFirebaseOptions {
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
         return android;
-      case TargetPlatform.iOS:
-        return ios;
+      // case TargetPlatform.iOS:
+      //   return ios;
       case TargetPlatform.macOS:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for macos - '
@@ -64,12 +64,12 @@ class DefaultFirebaseOptions {
     storageBucket: 'skl-notification.firebasestorage.app',
   );
 
-  static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyCetSuqB8SujRlCABj9vcF3NQjM_fPs8eI',
-    appId: '1:448022630522:ios:3b30515cae354410aeebc3',
-    messagingSenderId: '448022630522',
-    projectId: 'skl-notification',
-    storageBucket: 'skl-notification.firebasestorage.app',
-    iosBundleId: 'com.leaveApp.SklHrApp.sklLeave',
-  );
+  // static const FirebaseOptions ios = FirebaseOptions(
+  //   apiKey: 'AIzaSyCetSuqB8SujRlCABj9vcF3NQjM_fPs8eI',
+  //   appId: '1:448022630522:ios:3b30515cae354410aeebc3',
+  //   messagingSenderId: '448022630522',
+  //   projectId: 'skl-notification',
+  //   storageBucket: 'skl-notification.firebasestorage.app',
+  //   iosBundleId: 'com.leaveApp.SklHrApp.sklLeave',
+  // );
 }
