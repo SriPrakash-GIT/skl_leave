@@ -11,6 +11,7 @@ import 'globalVariable.dart';
 import 'home.dart';
 import 'login.dart';
 import 'notificationtoken.dart';
+import 'newLocation.dart';
 
 late String? deviceId = "";
 String? deviceType;
@@ -110,10 +111,12 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: chk ? HomeScreen() : const LoginPage(),
+      // home: chk ? HomeScreen() : const LoginPage(),
+      home: ReachedWorkPage(),
       debugShowCheckedModeBanner: false,
       routes: {
         '/home': (context) => HomeScreen(),
+        '/newLocation': (context) => ReachedWorkPage(),
       },
     );
   }

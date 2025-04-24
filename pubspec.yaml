@@ -34,6 +34,11 @@ dependencies:
   url_launcher: ^6.0.9
   webview_flutter: ^4.4.2
   flutter_udid: ^2.0.0
+  google_maps_flutter: ^2.5.0
+  geolocator: ^11.0.0
+  geocoding: ^2.1.0
+  image_picker: ^1.0.4
+  path_provider: ^2.0.15
 
 dev_dependencies:
   flutter_test:

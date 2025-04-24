@@ -10,7 +10,6 @@ import 'package:skl_leave/register.dart';
 import 'globalVariable.dart';
 import 'home.dart';
 import 'main.dart';
-import 'notificationtoken.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});

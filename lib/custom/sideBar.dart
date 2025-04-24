@@ -46,6 +46,13 @@ class CustomDrawer extends StatelessWidget {
                   title: 'Home',
                   route: '/home',
                 ),
+                _buildDrawerItem(
+                  context,
+                  condition: true,
+                  icon: Icons.location_on_rounded,
+                  title: 'Update Location',
+                  route: '/newLocation',
+                ),
               ],
             ),
           ),
