@@ -24,7 +24,7 @@ Future<void> main() async {
 
   await getDeviceID();
 
-  getNotificationToken(fcmToken, deviceId);
+  // getNotificationToken(fcmToken, deviceId);
 
   final prefs = await SharedPreferences.getInstance();
   // await prefs.setString("deviceToken", fcmToken);
