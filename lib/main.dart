@@ -18,9 +18,9 @@ String? deviceType;
 
 late var chk = false;
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  await PushNotification.init();
+  // WidgetsFlutterBinding.ensureInitialized();
+  // await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  // await PushNotification.init();
 
   await getDeviceID();
 

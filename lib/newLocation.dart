@@ -31,18 +31,15 @@ class _ReachedWorkPageState extends State<ReachedWorkPage> {
 
   String screenType = "Update Location";
   String? endTime;
+  String? starNewTime;
   GoogleMapController? _mapController;
   final _scaffoldKey = GlobalKey<ScaffoldState>();
-  final String _primaryFont = 'Inter'; // Modern sans-serif
-  final String _secondaryFont = 'Poppins';
+
   // Colors
-  final Color _primaryColor = Color(0xFF6C5CE7);
-  final Color _secondaryColor = Color(0xFF00CEFF);
-  final Color _accentColor = Colors.deepOrange.shade500;
+  final Color _primaryColor = Colors.deepPurple.shade300;
+  final Color _accentColor = Colors.deepOrange.shade300;
   final Color _darkColor = Color(0xFF2D3436);
   final Color _lightColor = Color(0xFFF5F6Fd);
-  final Color _textColor = Color(0xFF212529); // Dark gray
-  final Color _cardColor = Color(0xFFFFFFFF);
 
   Future<void> _startReachedTime() async {
     if (_isTracking) return;
@@ -71,19 +68,19 @@ class _ReachedWorkPageState extends State<ReachedWorkPage> {
     try {
       setState(() => _isTracking = true);
       _showSnackBar('📍 Location tracking started');
-
+      DateTime starTime = DateTime.now();
+      starNewTime = _formatEndTime(starTime);
       // Get current position with high accuracy
       _currentPosition = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
-
+      print(_currentPosition.toString());
       // Get detailed address information
       List<Placemark> placemarks = await placemarkFromCoordinates(
         _currentPosition!.latitude,
         _currentPosition!.longitude,
       );
-      print(placemarks);
-      print("placemarks==========");
+
       if (placemarks.isNotEmpty) {
         Placemark place = placemarks.first;
 
@@ -99,10 +96,7 @@ class _ReachedWorkPageState extends State<ReachedWorkPage> {
         if (place.locality != null && place.locality!.isNotEmpty) {
           addressComponents.add(place.locality!);
         }
-        if (place.subAdministrativeArea != null &&
-            place.subAdministrativeArea!.isNotEmpty) {
-          addressComponents.add(place.subAdministrativeArea!);
-        }
+
         if (place.administrativeArea != null &&
             place.administrativeArea!.isNotEmpty) {
           addressComponents.add(place.administrativeArea!);
@@ -125,7 +119,7 @@ class _ReachedWorkPageState extends State<ReachedWorkPage> {
         print('Street: ${place.street}');
         print('Landmark: ${place.subLocality}');
         print('Area: ${place.locality}');
-        print('City: ${place.subAdministrativeArea}');
+        print('City: ${place.name}');
         print('State: ${place.administrativeArea}');
         print('Country: ${place.country}');
         print('Postal Code: ${place.postalCode}');
@@ -168,8 +162,14 @@ class _ReachedWorkPageState extends State<ReachedWorkPage> {
     _timer?.cancel();
     _timer = null;
     setState(() => _isTracking = false);
-    sendNewLocation(globalIDcardNo, screenType, _frequencyCount.toString(),
-        endTime.toString(), "");
+    sendNewLocation(
+      globalIDcardNo,
+      screenType,
+      _currentPosition.toString(),
+      starNewTime.toString(),
+      endTime.toString(),
+      _frequencyCount.toString(),
+    );
   }
 
   void _showSnackBar(String message) {
@@ -192,14 +192,30 @@ class _ReachedWorkPageState extends State<ReachedWorkPage> {
     super.dispose();
   }
 
-  Future<void> sendNewLocation(String globalIDcardNo, String type,
-      String coOrdinate, String timer, String frequency) async {
-    String url = "$ipAddress/api/changeAdminPass/";
+  Future<void> sendNewLocation(
+      String globalIDcardNo,
+      String type,
+      String coOrdinate,
+      String starTime,
+      String endTime,
+      String frequency) async {
+    String url = "$ipAddress/api/sendNewLocation";
     try {
-      final response = await http.get(Uri.parse(url));
-
+      final response = await http.post(Uri.parse(url),
+          headers: <String, String>{
+            'Content-Type': 'application/json; charset=UTF-8',
+          },
+          body: jsonEncode({
+            "IDCARDNO": globalIDcardNo,
+            "TYPE": type.toString(),
+            "COORDINATE": coOrdinate,
+            "STIME": starTime,
+            "ENDTIME": endTime,
+            "FREQUENCY": frequency,
+          }));
       final responseData = jsonDecode(response.body);
       if (responseData["STATUS"] == true) {
+        _showSnackBar('On-duty location was saved successfully.');
       } else {
         _showErrorDialog("Alert", "${responseData["MESSAGE"]}");
       }

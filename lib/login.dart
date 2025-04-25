@@ -414,11 +414,6 @@ class _LoginPageState extends State<LoginPage> {
       String userid, String hashedPassword, String deviceId) async {
     String url = "$ipAddress/api/LoginData";
     try {
-      print(deviceId);
-      print("===================================000111print(deviceId);");
-      // SharedPreferences prefs = await SharedPreferences.getInstance();
-
-      // deviceId = await prefs.getString('DeviceIdToken');
       final response = await http.post(Uri.parse(url),
           headers: <String, String>{
             'Content-Type': 'application/json; charset=UTF-8',
@@ -428,9 +423,9 @@ class _LoginPageState extends State<LoginPage> {
             "deviceId": deviceId.toString(),
             "password": hashedPassword,
           }));
-      print(deviceId.toString());
+
       final Map<String, dynamic> data = json.decode(response.body);
-      print(data);
+
       if (data["status"] == true) {
         SharedPreferences prefs = await SharedPreferences.getInstance();
         await prefs.setString('employeeId', _emailController.text);
@@ -500,7 +495,6 @@ class _LoginPageState extends State<LoginPage> {
       final Map<String, dynamic> data = json.decode(response.body);
 
       if (data["status"] == true) {
-        print("=================send con pwd======================");
         _adminPassword = AutPass;
       }
     } catch (e) {}
@@ -561,7 +555,7 @@ class _LoginPageState extends State<LoginPage> {
                               Text(
                                 'Glad to see you again!',
                                 style: GoogleFonts.poppins(
-                                  fontSize: 16,
+                                  fontSize: 14,
                                   color: Colors.white.withOpacity(0.9),
                                 ),
                               ),

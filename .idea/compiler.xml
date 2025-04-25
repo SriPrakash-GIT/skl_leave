@@ -2,7 +2,10 @@
 <project version="4">
   <component name="CompilerConfiguration">
     <bytecodeTargetLevel>
-      <module name="android.webview_flutter_android" target="23" />
+      <module name="android.path_provider_android" target="23" />
+      <module name="android.shared_preferences_android" target="23" />
+      <module name="android.url_launcher_android" target="23" />
+      <module name="io.flutter.plugins.webviewflutter.android.webview_flutter_android" target="23" />
     </bytecodeTargetLevel>
   </component>
 </project>
