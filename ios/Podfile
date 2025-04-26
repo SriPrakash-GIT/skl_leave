@@ -1,21 +1,15 @@
-# Define the minimum iOS platform version
+# Minimum iOS platform
 platform :ios, '13.0'
 
 # CocoaPods analytics disables
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
-# Prevent CocoaPods from embedding Swift standard libraries into your app
-install! 'cocoapods',
-         :disable_input_output_paths => true
+# Disable unnecessary input/output paths
+install! 'cocoapods', :disable_input_output_paths => true
 
-# Define the Xcode project
-project 'Runner', {
-  'Debug' => :debug,
-  'Profile' => :release,
-  'Release' => :release,
-}
+# This is the IMPORTANT missing line 👇
+load File.join(__dir__, 'Flutter', 'podhelper.rb')
 
-# Define the main target
 target 'Runner' do
   use_frameworks!
   use_modular_headers!
@@ -23,12 +17,11 @@ target 'Runner' do
   flutter_install_all_ios_pods(File.dirname(File.realpath(__FILE__)))
 end
 
-# Post install settings for CocoaPods
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
 
-    # Workaround for ARM64 simulator builds on Xcode 14+
+    # Workaround for arm64 simulator builds on Xcode 14+
     target.build_configurations.each do |config|
       config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = 'arm64'
     end
