@@ -18,13 +18,13 @@ String? deviceType;
 
 late var chk = false;
 Future<void> main() async {
-  // WidgetsFlutterBinding.ensureInitialized();
-  // await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  // await PushNotification.init();
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await PushNotification.init();
 
   await getDeviceID();
 
-  // getNotificationToken(fcmToken, deviceId);
+  getNotificationToken(fcmToken, deviceId);
 
   final prefs = await SharedPreferences.getInstance();
   // await prefs.setString("deviceToken", fcmToken);
@@ -111,8 +111,8 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      // home: chk ? HomeScreen() : const LoginPage(),
-      home: ReachedWorkPage(),
+      home: chk ? HomeScreen() : const LoginPage(),
+      // home: ReachedWorkPage(),
       debugShowCheckedModeBanner: false,
       routes: {
         '/home': (context) => HomeScreen(),
