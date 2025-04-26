@@ -2,8 +2,6 @@
 <project version="4">
   <component name="CompilerConfiguration">
     <bytecodeTargetLevel>
-      <module name="android.cloud_firestore" target="23" />
-      <module name="android.firebase_core" target="23" />
       <module name="android.firebase_messaging" target="23" />
       <module name="android.path_provider_android" target="23" />
       <module name="android.shared_preferences_android" target="23" />
