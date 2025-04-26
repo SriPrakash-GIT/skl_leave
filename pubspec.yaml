@@ -26,7 +26,6 @@ dependencies:
   shared_preferences: ^2.5.2
   flutter_launcher_icons: ^0.14.1
   dropdown_button2: ^1.9.0
-  firebase_messaging: ^15.2.4
   firebase_core: ^3.12.1
   cloud_firestore: ^5.6.5
   device_info_plus: ^10.0.0
