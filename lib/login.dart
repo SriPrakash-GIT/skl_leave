@@ -413,6 +413,7 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> fetchCheckPassword(
       String userid, String hashedPassword, String deviceId) async {
     String url = "$ipAddress/api/LoginData";
+    print(url);
     try {
       final response = await http.post(Uri.parse(url),
           headers: <String, String>{

@@ -1,14 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:http/http.dart' as http;
 import 'package:skl_leave/login.dart';
 import 'custom/appBar.dart';
 import 'custom/sideBar.dart';
-import 'package:http/http.dart' as http;
 import 'globalVariable.dart';
-import 'dart:convert';
 
 class ReachedWorkPage extends StatefulWidget {
   @override
@@ -20,26 +20,31 @@ class _ReachedWorkPageState extends State<ReachedWorkPage> {
   int _frequencyCount = 0;
   Duration _elapsed = Duration.zero;
   Position? _currentPosition;
-  String? _address;
+  String? _address = "";
+  String? _address1;
   bool _isTracking = false;
   bool _showMap = false;
-  String _formatEndTime(DateTime time) {
-    return "${time.hour.toString().padLeft(2, '0')}:"
-        "${time.minute.toString().padLeft(2, '0')}:"
-        "${time.second.toString().padLeft(2, '0')}";
-  }
-
   String screenType = "Update Location";
   String? endTime;
   String? starNewTime;
   GoogleMapController? _mapController;
   final _scaffoldKey = GlobalKey<ScaffoldState>();
 
-  // Colors
-  final Color _primaryColor = Colors.deepPurple.shade300;
-  final Color _accentColor = Colors.deepOrange.shade300;
-  final Color _darkColor = Color(0xFF2D3436);
+  // Distance tracking variables
+  StreamSubscription<Position>? _positionStream;
+  List<LatLng> _path = [];
+  double _totalDistanceInMeters = 0.0;
+
+  final Color _primaryColor = Colors.orange.shade600;
+  final Color _accentColor = Colors.purple.shade900;
+  final Color _darkColor = Color(0xFF2D3336);
   final Color _lightColor = Color(0xFFF5F6Fd);
+
+  String _formatEndTime(DateTime time) {
+    return "${time.hour.toString().padLeft(2, '0')}:"
+        "${time.minute.toString().padLeft(2, '0')}:"
+        "${time.second.toString().padLeft(2, '0')}";
+  }
 
   Future<void> _startReachedTime() async {
     if (_isTracking) return;
@@ -60,22 +65,28 @@ class _ReachedWorkPageState extends State<ReachedWorkPage> {
     }
 
     if (permission == LocationPermission.deniedForever) {
-      _showSnackBar(
-          'Location permissions are permanently denied. Please enable them in settings.');
+      _showSnackBar('Location permissions are permanently denied.');
       return;
     }
 
     try {
-      setState(() => _isTracking = true);
+      setState(() {
+        _isTracking = true;
+        _path.clear();
+        _totalDistanceInMeters = 0.0;
+      });
+
       _showSnackBar('📍 Location tracking started');
+
       DateTime starTime = DateTime.now();
       starNewTime = _formatEndTime(starTime);
-      // Get current position with high accuracy
+      List<String> value = starNewTime!.split(":");
+      starNewTime = value[0] + ":" + value[1];
+
       _currentPosition = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
-      print(_currentPosition.toString());
-      // Get detailed address information
+
       List<Placemark> placemarks = await placemarkFromCoordinates(
         _currentPosition!.latitude,
         _currentPosition!.longitude,
@@ -83,59 +94,36 @@ class _ReachedWorkPageState extends State<ReachedWorkPage> {
 
       if (placemarks.isNotEmpty) {
         Placemark place = placemarks.first;
-
-        // Build a comprehensive address string with all available components
         List<String> addressComponents = [];
 
-        if (place.street != null && place.street!.isNotEmpty) {
+        if (place.street != null && place.street!.isNotEmpty)
           addressComponents.add(place.street!);
-        }
-        if (place.subLocality != null && place.subLocality!.isNotEmpty) {
+        if (place.subLocality != null && place.subLocality!.isNotEmpty)
           addressComponents.add(place.subLocality!);
-        }
-        if (place.locality != null && place.locality!.isNotEmpty) {
+        if (place.locality != null && place.locality!.isNotEmpty)
           addressComponents.add(place.locality!);
-        }
-
         if (place.administrativeArea != null &&
-            place.administrativeArea!.isNotEmpty) {
+            place.administrativeArea!.isNotEmpty)
           addressComponents.add(place.administrativeArea!);
-        }
-        if (place.postalCode != null && place.postalCode!.isNotEmpty) {
+        if (place.postalCode != null && place.postalCode!.isNotEmpty)
           addressComponents.add(place.postalCode!);
-        }
-        if (place.country != null && place.country!.isNotEmpty) {
-          addressComponents.add(place.country!);
-        }
 
         String formattedAddress = addressComponents.join(', ');
-
         setState(() {
           _address = formattedAddress;
           _showMap = true;
         });
-
-        print('Full Address: $_address');
-        print('Street: ${place.street}');
-        print('Landmark: ${place.subLocality}');
-        print('Area: ${place.locality}');
-        print('City: ${place.name}');
-        print('State: ${place.administrativeArea}');
-        print('Country: ${place.country}');
-        print('Postal Code: ${place.postalCode}');
       }
 
-      // Update map view if controller is available
       if (_mapController != null) {
         _mapController!.animateCamera(
           CameraUpdate.newLatLngZoom(
             LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
-            16.0, // Slightly higher zoom level for better detail
+            16.0,
           ),
         );
       }
 
-      // Reset and start timer
       _timer?.cancel();
       setState(() {
         _frequencyCount = 0;
@@ -148,28 +136,111 @@ class _ReachedWorkPageState extends State<ReachedWorkPage> {
           if (_elapsed.inSeconds % 900 == 0) _frequencyCount++;
         });
       });
+
+      // Start distance tracking
+      _positionStream = Geolocator.getPositionStream(
+        locationSettings: LocationSettings(
+          accuracy: LocationAccuracy.best,
+          distanceFilter: 5,
+        ),
+      ).listen((Position position) {
+        LatLng newPoint = LatLng(position.latitude, position.longitude);
+        setState(() {
+          _currentPosition = position;
+          if (_path.isNotEmpty) {
+            _totalDistanceInMeters += Geolocator.distanceBetween(
+              _path.last.latitude,
+              _path.last.longitude,
+              newPoint.latitude,
+              newPoint.longitude,
+            );
+          }
+          _path.add(newPoint);
+        });
+      });
+
+      sendNewLocation(
+          globalIDcardNo,
+          screenType,
+          _currentPosition.toString(),
+          starNewTime.toString(),
+          "",
+          _frequencyCount.toString(),
+          _address.toString(),
+          "",
+          true);
     } catch (e) {
       _showSnackBar('Error getting location: ${e.toString()}');
       setState(() => _isTracking = false);
     }
   }
 
-  void _stopWorkDone() {
-    if (!_isTracking) return;
+  void _stopWorkDone() async {
     DateTime stopTime = DateTime.now();
     endTime = _formatEndTime(stopTime);
+    List<String> value = endTime!.split(":");
+    endTime = value[0] + ":" + value[1];
 
     _timer?.cancel();
     _timer = null;
-    setState(() => _isTracking = false);
-    sendNewLocation(
-      globalIDcardNo,
-      screenType,
-      _currentPosition.toString(),
-      starNewTime.toString(),
-      endTime.toString(),
-      _frequencyCount.toString(),
-    );
+
+    _positionStream?.cancel();
+
+    Duration duration = _elapsed;
+
+    try {
+      // Fetch latest position
+      Position stopPosition = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      // Get address from coordinates
+      List<Placemark> placemarks = await placemarkFromCoordinates(
+        stopPosition.latitude,
+        stopPosition.longitude,
+      );
+
+      if (placemarks.isNotEmpty) {
+        Placemark place = placemarks.first;
+        List<String> addressComponents = [];
+
+        if (place.street != null && place.street!.isNotEmpty)
+          addressComponents.add(place.street!);
+        if (place.subLocality != null && place.subLocality!.isNotEmpty)
+          addressComponents.add(place.subLocality!);
+        if (place.locality != null && place.locality!.isNotEmpty)
+          addressComponents.add(place.locality!);
+        if (place.administrativeArea != null &&
+            place.administrativeArea!.isNotEmpty)
+          addressComponents.add(place.administrativeArea!);
+        if (place.postalCode != null && place.postalCode!.isNotEmpty)
+          addressComponents.add(place.postalCode!);
+
+        String formattedAddress = addressComponents.join(', ');
+        setState(() {
+          _address1 = formattedAddress;
+        });
+      }
+
+      _showSnackBar(
+        "🏁 Total Distance: ${(_totalDistanceInMeters / 1000).toStringAsFixed(2)} km, ⏱️ ${duration.inMinutes} min",
+      );
+
+      setState(() => _isTracking = false);
+
+      sendNewLocation(
+          globalIDcardNo,
+          screenType,
+          stopPosition.toString(),
+          "",
+          endTime.toString(),
+          _frequencyCount.toString(),
+          "",
+          _address1.toString(),
+          false);
+    } catch (e) {
+      _showSnackBar("❌ Error fetching stop location: ${e.toString()}");
+    }
   }
 
   void _showSnackBar(String message) {
@@ -177,9 +248,7 @@ class _ReachedWorkPageState extends State<ReachedWorkPage> {
       SnackBar(
         content: Text(message),
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         backgroundColor: _darkColor,
       ),
     );
@@ -188,6 +257,7 @@ class _ReachedWorkPageState extends State<ReachedWorkPage> {
   @override
   void dispose() {
     _timer?.cancel();
+    _positionStream?.cancel();
     _mapController?.dispose();
     super.dispose();
   }
@@ -198,26 +268,45 @@ class _ReachedWorkPageState extends State<ReachedWorkPage> {
       String coOrdinate,
       String starTime,
       String endTime,
-      String frequency) async {
+      String frequency,
+      String sAddress,
+      String eAddress,
+      bool start) async {
     String url = "$ipAddress/api/sendNewLocation";
+
+    print(globalIDcardNo);
+    print("globalIDcardNo ");
+
     try {
-      final response = await http.post(Uri.parse(url),
-          headers: <String, String>{
-            'Content-Type': 'application/json; charset=UTF-8',
-          },
-          body: jsonEncode({
-            "IDCARDNO": globalIDcardNo,
-            "TYPE": type.toString(),
-            "COORDINATE": coOrdinate,
-            "STIME": starTime,
-            "ENDTIME": endTime,
-            "FREQUENCY": frequency,
-          }));
-      final responseData = jsonDecode(response.body);
-      if (responseData["STATUS"] == true) {
-        _showSnackBar('On-duty location was saved successfully.');
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json; charset=UTF-8'},
+        body: jsonEncode({
+          "IDCARDNO": globalIDcardNo,
+          "TYPE": type,
+          "COORDINATE": coOrdinate,
+          "STIME": starTime,
+          "ENDTIME": endTime,
+          "STARTADDRESS": sAddress,
+          "ENDLOCATION": eAddress,
+          "FREQUENCY": frequency,
+          "DISTANCE": _totalDistanceInMeters.toStringAsFixed(2),
+          "DURATION": _elapsed.inSeconds.toString(),
+        }),
+      );
+      final Map<String, dynamic> responseData = json.decode(response.body);
+      if (responseData["status"] == true) {
+        _showSnackBar("${responseData["message"]}");
       } else {
-        _showErrorDialog("Alert", "${responseData["MESSAGE"]}");
+        _showErrorDialog("Alert", "${responseData["message"]}");
+        if (start) {
+          setState(() {
+            _isTracking = false;
+            _path.clear();
+            _totalDistanceInMeters = 0.0;
+          });
+          _showErrorDialog("Alert", "Please try again");
+        }
       }
     } catch (e) {
       _showErrorDialog("Connection Error", "Please try again later");
@@ -245,7 +334,7 @@ class _ReachedWorkPageState extends State<ReachedWorkPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: _lightColor,
+      backgroundColor: Colors.grey[100],
       appBar: CustomAppBar(
         onMenuPressed: () {},
         barTitle: "Update Location",
@@ -255,32 +344,28 @@ class _ReachedWorkPageState extends State<ReachedWorkPage> {
         brhTransferCheck: false,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 600),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                const SizedBox(height: 20), // Top padding
-                _buildActionCard(
-                  icon: Icons.location_pin,
-                  title: ' REACHED LOCATION',
-                  subtitle: _currentPosition != null
-                      ? '${_currentPosition!.latitude.toStringAsFixed(4)}, '
-                          '${_currentPosition!.longitude.toStringAsFixed(4)}'
-                      : '🧭 Tap here to fetch location',
+                _buildModernCard(
+                  icon: Icons.location_on,
+                  title: "Start Location",
+                  subtitle: "Tap to Start your OnDuty",
                   address: _address,
                   color: _primaryColor,
                   onTap: _startReachedTime,
                   isActive: !_isTracking,
                 ),
                 const SizedBox(height: 30),
-                _buildActionCard(
-                  icon: Icons.work,
-                  title: 'WORK DONE',
-                  subtitle: '✅ Close this work session',
+                _buildModernCard(
+                  icon: Icons.done_all,
+                  title: "Reached Location",
+                  subtitle: "Tap to Stop and submit this session",
                   color: _accentColor,
+                  address: _address1,
                   onTap: _stopWorkDone,
                   isActive: true,
                 ),
@@ -292,86 +377,89 @@ class _ReachedWorkPageState extends State<ReachedWorkPage> {
     );
   }
 
-  Widget _buildActionCard({
+  Widget _buildModernCard({
     required IconData icon,
     required String title,
-    String? subtitle,
+    required String subtitle,
     String? address,
     required Color color,
     required VoidCallback onTap,
-    required bool isActive,
+    bool isActive = true,
   }) {
-    return InkWell(
-      onTap: isActive ? onTap : null,
-      borderRadius: BorderRadius.circular(15),
-      child: Container(
-        width: double.infinity, // Make card take full available width
-        padding: EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              color.withOpacity(0.9),
-              color.withOpacity(0.7),
-            ],
-          ),
-          borderRadius: BorderRadius.circular(15),
-          boxShadow: [
-            BoxShadow(
-              color: color.withOpacity(0.3),
-              blurRadius: 10,
-              offset: Offset(0, 5),
-            ),
-          ],
-        ),
-        child: Column(
-          children: [
-            Icon(icon, size: 40, color: Colors.white),
-            SizedBox(height: 10),
-            Text(title,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                )),
-            if (subtitle != null) ...[
-              SizedBox(height: 5),
-              Text(subtitle,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.white.withOpacity(0.9),
-                  )),
-            ],
-            if (address != null) ...[
-              SizedBox(height: 5),
-              Text(
-                address,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.white.withOpacity(0.8),
-                ),
+    return Opacity(
+      opacity: isActive ? 1 : 0.5,
+      child: Card(
+        elevation: 5,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: color.withOpacity(0.2),
+                    child: Icon(icon, color: color),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: color,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
-            if (!isActive) ...[
-              SizedBox(height: 10),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: Colors.greenAccent.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(10),
+              const SizedBox(height: 12),
+              Text(
+                subtitle,
+                style: TextStyle(fontSize: 14, color: Colors.black54),
+              ),
+              if (address != null && address.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    const Icon(Icons.place, size: 16, color: Colors.grey),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        address,
+                        style: const TextStyle(
+                            fontSize: 14, color: Colors.black87),
+                      ),
+                    ),
+                  ],
                 ),
-                child: Text(
-                  'Active Session',
-                  style: TextStyle(
+              ],
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: color,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  onPressed: isActive ? onTap : null,
+                  icon: const Icon(
+                    Icons.touch_app,
                     color: Colors.white,
-                    fontSize: 12,
+                  ),
+                  label: const Text(
+                    "Tap to Continue",
+                    style: TextStyle(color: Colors.white),
                   ),
                 ),
               ),
             ],
-          ],
+          ),
         ),
       ),
     );
