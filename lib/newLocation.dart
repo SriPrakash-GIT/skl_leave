@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:skl_leave/login.dart';
 import 'custom/appBar.dart';
 import 'custom/sideBar.dart';
@@ -15,7 +18,7 @@ class ReachedWorkPage extends StatefulWidget {
   _ReachedWorkPageState createState() => _ReachedWorkPageState();
 }
 
-class _ReachedWorkPageState extends State<ReachedWorkPage> {
+class _ReachedWorkPageState extends State<ReachedWorkPage> with WidgetsBindingObserver {
   Timer? _timer;
   int _frequencyCount = 0;
   Duration _elapsed = Duration.zero;
@@ -40,10 +43,143 @@ class _ReachedWorkPageState extends State<ReachedWorkPage> {
   final Color _darkColor = Color(0xFF2D3336);
   final Color _lightColor = Color(0xFFF5F6Fd);
 
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _checkExistingSession();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _positionStream?.cancel();
+    _mapController?.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_isTracking) {
+      if (state == AppLifecycleState.paused) {
+        _showSnackBar('Tracking continues in background');
+      } else if (state == AppLifecycleState.resumed) {
+        _showSnackBar('Returned to foreground - tracking active');
+      }
+    }
+  }
+
   String _formatEndTime(DateTime time) {
     return "${time.hour.toString().padLeft(2, '0')}:"
         "${time.minute.toString().padLeft(2, '0')}:"
         "${time.second.toString().padLeft(2, '0')}";
+  }
+
+  Future<void> _checkExistingSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    final isTracking = prefs.getBool('isTracking') ?? false;
+
+    if (isTracking) {
+      final startTime = prefs.getString('startTime');
+      final startAddress = prefs.getString('startAddress');
+
+      if (startTime != null && startAddress != null) {
+        setState(() {
+          _isTracking = true;
+          _address = startAddress;
+          starNewTime = startTime;
+          _elapsed = Duration(seconds: prefs.getInt('elapsedSeconds') ?? 0);
+          _frequencyCount = prefs.getInt('frequencyCount') ?? 0;
+          _totalDistanceInMeters = prefs.getDouble('totalDistance') ?? 0.0;
+        });
+
+        _startBackgroundTracking();
+      }
+    }
+  }
+
+  Future<void> _saveTrackingState() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('isTracking', _isTracking);
+    await prefs.setString('startTime', starNewTime ?? '');
+    await prefs.setString('startAddress', _address ?? '');
+    await prefs.setInt('elapsedSeconds', _elapsed.inSeconds);
+    await prefs.setInt('frequencyCount', _frequencyCount);
+    await prefs.setDouble('totalDistance', _totalDistanceInMeters);
+  }
+
+  Future<void> _clearTrackingState() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('isTracking');
+    await prefs.remove('startTime');
+    await prefs.remove('startAddress');
+    await prefs.remove('startPosition');
+    await prefs.remove('elapsedSeconds');
+    await prefs.remove('frequencyCount');
+    await prefs.remove('totalDistance');
+  }
+
+  Future<void> _startBackgroundTracking() async {
+    if (_isTracking) {
+      _timer = Timer.periodic(Duration(seconds: 1), (timer) {
+        setState(() {
+          _elapsed += Duration(seconds: 1);
+          if (_elapsed.inSeconds % 900 == 0) _frequencyCount++;
+        });
+        _saveTrackingState();
+      });
+
+      // Updated location settings configuration
+      LocationSettings locationSettings;
+
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        locationSettings = AndroidSettings(
+          accuracy: LocationAccuracy.bestForNavigation,
+          distanceFilter: 1, // reduce from 5 → more frequent updates
+          intervalDuration: const Duration(seconds: 5),
+          foregroundNotificationConfig: const ForegroundNotificationConfig(
+            notificationText: "SKL HR App  - OnDuty Location tracking active",
+            notificationTitle: " OndDuty Location Tracking",
+            notificationIcon: AndroidResource(
+              name: 'ic_tracker',
+              defType: 'drawable',
+            ),
+            enableWakeLock: true,
+          ),
+        );
+      } else if (defaultTargetPlatform == TargetPlatform.iOS) {
+        locationSettings = AppleSettings(
+          accuracy: LocationAccuracy.bestForNavigation,
+          distanceFilter: 5,
+          activityType: ActivityType.fitness,
+        );
+      } else {
+        locationSettings = LocationSettings(
+          accuracy: LocationAccuracy.bestForNavigation,
+          distanceFilter: 5,
+        );
+      }
+
+      _positionStream = Geolocator.getPositionStream(
+        locationSettings: locationSettings,
+      ).listen((Position position) {
+        LatLng newPoint = LatLng(position.latitude, position.longitude);
+        setState(() {
+          _currentPosition = position;
+          if (_path.isNotEmpty) {
+            _totalDistanceInMeters += Geolocator.distanceBetween(
+              _path.last.latitude,
+              _path.last.longitude,
+              newPoint.latitude,
+              newPoint.longitude,
+            );
+          }
+          _path.add(newPoint);
+        });
+        _saveTrackingState();
+      });
+    }
   }
 
   Future<void> _startReachedTime() async {
@@ -70,6 +206,11 @@ class _ReachedWorkPageState extends State<ReachedWorkPage> {
     }
 
     try {
+      // Request background location permission for Android
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        await Geolocator.requestPermission();
+      }
+
       setState(() {
         _isTracking = true;
         _path.clear();
@@ -84,7 +225,7 @@ class _ReachedWorkPageState extends State<ReachedWorkPage> {
       starNewTime = value[0] + ":" + value[1];
 
       _currentPosition = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+        desiredAccuracy: LocationAccuracy.bestForNavigation,
       );
 
       List<Placemark> placemarks = await placemarkFromCoordinates(
@@ -115,49 +256,8 @@ class _ReachedWorkPageState extends State<ReachedWorkPage> {
         });
       }
 
-      if (_mapController != null) {
-        _mapController!.animateCamera(
-          CameraUpdate.newLatLngZoom(
-            LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
-            16.0,
-          ),
-        );
-      }
-
-      _timer?.cancel();
-      setState(() {
-        _frequencyCount = 0;
-        _elapsed = Duration.zero;
-      });
-
-      _timer = Timer.periodic(Duration(seconds: 1), (timer) {
-        setState(() {
-          _elapsed += Duration(seconds: 1);
-          if (_elapsed.inSeconds % 900 == 0) _frequencyCount++;
-        });
-      });
-
-      // Start distance tracking
-      _positionStream = Geolocator.getPositionStream(
-        locationSettings: LocationSettings(
-          accuracy: LocationAccuracy.best,
-          distanceFilter: 5,
-        ),
-      ).listen((Position position) {
-        LatLng newPoint = LatLng(position.latitude, position.longitude);
-        setState(() {
-          _currentPosition = position;
-          if (_path.isNotEmpty) {
-            _totalDistanceInMeters += Geolocator.distanceBetween(
-              _path.last.latitude,
-              _path.last.longitude,
-              newPoint.latitude,
-              newPoint.longitude,
-            );
-          }
-          _path.add(newPoint);
-        });
-      });
+      await _saveTrackingState();
+      _startBackgroundTracking();
 
       sendNewLocation(
           globalIDcardNo,
@@ -169,6 +269,13 @@ class _ReachedWorkPageState extends State<ReachedWorkPage> {
           _address.toString(),
           "",
           true);
+      print("=============================start==================================");
+      print(globalIDcardNo);
+      print(starNewTime);
+      print(_currentPosition);
+      print(_frequencyCount);
+      print(_address);
+      print("===============================================================");
     } catch (e) {
       _showSnackBar('Error getting location: ${e.toString()}');
       setState(() => _isTracking = false);
@@ -182,19 +289,15 @@ class _ReachedWorkPageState extends State<ReachedWorkPage> {
     endTime = value[0] + ":" + value[1];
 
     _timer?.cancel();
-    _timer = null;
-
     _positionStream?.cancel();
 
     Duration duration = _elapsed;
 
     try {
-      // Fetch latest position
       Position stopPosition = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+        desiredAccuracy: LocationAccuracy.bestForNavigation,
       );
 
-      // Get address from coordinates
       List<Placemark> placemarks = await placemarkFromCoordinates(
         stopPosition.latitude,
         stopPosition.longitude,
@@ -227,6 +330,7 @@ class _ReachedWorkPageState extends State<ReachedWorkPage> {
       );
 
       setState(() => _isTracking = false);
+      await _clearTrackingState();
 
       sendNewLocation(
           globalIDcardNo,
@@ -238,6 +342,14 @@ class _ReachedWorkPageState extends State<ReachedWorkPage> {
           "",
           _address1.toString(),
           false);
+      print("=============================stop==================================");
+      print(globalIDcardNo);
+      print(stopPosition);
+      print(endTime);
+      print(_frequencyCount);
+      print(_address1);
+      print(_totalDistanceInMeters.toStringAsFixed(2));
+      print("===============================================================");
     } catch (e) {
       _showSnackBar("❌ Error fetching stop location: ${e.toString()}");
     }
@@ -254,14 +366,6 @@ class _ReachedWorkPageState extends State<ReachedWorkPage> {
     );
   }
 
-  @override
-  void dispose() {
-    _timer?.cancel();
-    _positionStream?.cancel();
-    _mapController?.dispose();
-    super.dispose();
-  }
-
   Future<void> sendNewLocation(
       String globalIDcardNo,
       String type,
@@ -273,9 +377,6 @@ class _ReachedWorkPageState extends State<ReachedWorkPage> {
       String eAddress,
       bool start) async {
     String url = "$ipAddress/api/sendNewLocation";
-
-    print(globalIDcardNo);
-    print("globalIDcardNo ");
 
     try {
       final response = await http.post(
@@ -305,6 +406,7 @@ class _ReachedWorkPageState extends State<ReachedWorkPage> {
             _path.clear();
             _totalDistanceInMeters = 0.0;
           });
+          await _clearTrackingState();
           _showErrorDialog("Alert", "Please try again");
         }
       }
@@ -369,6 +471,9 @@ class _ReachedWorkPageState extends State<ReachedWorkPage> {
                   onTap: _stopWorkDone,
                   isActive: true,
                 ),
+                if (_isTracking) ...[
+                  const SizedBox(height: 20),
+                ],
               ],
             ),
           ),
@@ -465,3 +570,4 @@ class _ReachedWorkPageState extends State<ReachedWorkPage> {
     );
   }
 }
+

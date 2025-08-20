@@ -2,7 +2,7 @@ name: skl_leave
 description: "A new Flutter project."
 publish_to: 'none'
 
-version: 1.0.2+1
+version: 1.0.2+2
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -54,7 +54,7 @@ flutter_launcher_icons:
   android: "logo"
   ios: true
   image_path: "assets/icon/logo.jpeg"
-  adaptive_icon_foreground: "assets/icon/logo.jpeg" # Set the foreground image (same or different from image_path)
+  adaptive_icon_foreground: "assets/icon/logo.jpeg"
   adaptive_icon_background: "#5F8F3C"
   remove_alpha_ios: true
   min_sdk_android: 21

@@ -10,6 +10,7 @@ import 'package:skl_leave/register.dart';
 import 'globalVariable.dart';
 import 'home.dart';
 import 'main.dart';
+import 'notificationtoken.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -88,7 +89,7 @@ class _LoginPageState extends State<LoginPage> {
         globalIDcardNo = _emailController.text;
 
         await fetchCheckPassword(
-            _emailController.text, digest.toString(), deviceId!);
+            _emailController.text, digest.toString(), deviceId!,fcmToken!);
 
         if (_rememberMe) {}
       } finally {
@@ -411,7 +412,7 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> fetchCheckPassword(
-      String userid, String hashedPassword, String deviceId) async {
+      String userid, String hashedPassword, String deviceId,String fcmToken) async {
     String url = "$ipAddress/api/LoginData";
     print(url);
     try {
@@ -423,6 +424,8 @@ class _LoginPageState extends State<LoginPage> {
             "idcardno": userid,
             "deviceId": deviceId.toString(),
             "password": hashedPassword,
+            "deviceToken": fcmToken,
+            "mvr":"V001"
           }));
 
       final Map<String, dynamic> data = json.decode(response.body);
