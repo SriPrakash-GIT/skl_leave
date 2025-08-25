@@ -8,7 +8,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:skl_leave/login.dart';
+import 'login.dart';
 import 'custom/appBar.dart';
 import 'custom/sideBar.dart';
 import 'globalVariable.dart';
@@ -18,463 +18,582 @@ class ReachedWorkPage extends StatefulWidget {
   _ReachedWorkPageState createState() => _ReachedWorkPageState();
 }
 
-class _ReachedWorkPageState extends State<ReachedWorkPage> with WidgetsBindingObserver {
-  Timer? _timer;
-  int _frequencyCount = 0;
-  Duration _elapsed = Duration.zero;
-  Position? _currentPosition;
-  String? _address = "";
-  String? _address1;
-  bool _isTracking = false;
-  bool _showMap = false;
-  String screenType = "Update Location";
-  String? endTime;
-  String? starNewTime;
-  GoogleMapController? _mapController;
+class _ReachedWorkPageState extends State<ReachedWorkPage>
+    with WidgetsBindingObserver {
+  // --- UI / State ---
   final _scaffoldKey = GlobalKey<ScaffoldState>();
-
-  // Distance tracking variables
-  StreamSubscription<Position>? _positionStream;
-  List<LatLng> _path = [];
-  double _totalDistanceInMeters = 0.0;
+  GoogleMapController? _mapController;
 
   final Color _primaryColor = Colors.orange.shade600;
   final Color _accentColor = Colors.purple.shade900;
-  final Color _darkColor = Color(0xFF2D3336);
-  final Color _lightColor = Color(0xFFF5F6Fd);
+  final Color _darkColor = const Color(0xFF2D3336);
+
+  String screenType = "Update Location";
+  bool _isTracking = false;
+  bool _showMap = true; // show a live mini-map
+
+  // --- Timer / Counters ---
+  Timer? _timer;
+  Duration _elapsed = Duration.zero;
+  int _frequencyCount = 0; // increments every 15 minutes
+
+  // --- Location / Path ---
+  StreamSubscription<Position>? _positionStream;
+  Position? _currentPosition;
+  Position? _startPosition;
+  String? _addressStart = "";
+  String? _addressStop = "";
+  String? _startTimeHHmm;
+  String? _endTimeHHmm;
+
+  // Live path (actual route) & distance
+  final List<LatLng> _path = [];
+  double _totalDistanceMeters = 0.0;
+
+  // Map drawables
+  final Set<Polyline> _polylines = {};
+  final Set<Marker> _markers = {};
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _checkExistingSession();
+    _restoreSession();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
     _positionStream?.cancel();
     _mapController?.dispose();
-    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
+  // -------- Lifecycle awareness (optional toast placeholders) --------
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (_isTracking) {
-      if (state == AppLifecycleState.paused) {
-        _showSnackBar('Tracking continues in background');
-      } else if (state == AppLifecycleState.resumed) {
-        _showSnackBar('Returned to foreground - tracking active');
-      }
+    if (!_isTracking) return;
+    // You can show snackbars if needed:
+    // if (state == AppLifecycleState.paused) _showSnack("Tracking continues in background");
+    // if (state == AppLifecycleState.resumed) _showSnack("Back to foreground");
+  }
+
+  // -------- Helpers --------
+  String _fmtHHmm(DateTime t) =>
+      "${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}";
+
+  void _showSnack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg),
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      backgroundColor: _darkColor,
+    ));
+  }
+
+  Future<void> _saveSession() async {
+    final p = await SharedPreferences.getInstance();
+    await p.setBool('isTracking', _isTracking);
+    await p.setString('startTime', _startTimeHHmm ?? '');
+    await p.setString('startAddress', _addressStart ?? '');
+    await p.setInt('elapsedSeconds', _elapsed.inSeconds);
+    await p.setInt('frequencyCount', _frequencyCount);
+    await p.setDouble('totalDistance', _totalDistanceMeters);
+
+    // Persist path compactly
+    final pathJson =
+        _path.map((e) => {'lat': e.latitude, 'lng': e.longitude}).toList();
+    await p.setString('pathJson', jsonEncode(pathJson));
+
+    if (_startPosition != null) {
+      await p.setString('startPos',
+          "${_startPosition!.latitude},${_startPosition!.longitude}");
     }
   }
 
-  String _formatEndTime(DateTime time) {
-    return "${time.hour.toString().padLeft(2, '0')}:"
-        "${time.minute.toString().padLeft(2, '0')}:"
-        "${time.second.toString().padLeft(2, '0')}";
+  Future<void> _clearSession() async {
+    final p = await SharedPreferences.getInstance();
+    await p.remove('isTracking');
+    await p.remove('startTime');
+    await p.remove('startAddress');
+    await p.remove('elapsedSeconds');
+    await p.remove('frequencyCount');
+    await p.remove('totalDistance');
+    await p.remove('pathJson');
+    await p.remove('startPos');
   }
 
-  Future<void> _checkExistingSession() async {
-    final prefs = await SharedPreferences.getInstance();
-    final isTracking = prefs.getBool('isTracking') ?? false;
+  Future<void> _restoreSession() async {
+    final p = await SharedPreferences.getInstance();
+    final resume = p.getBool('isTracking') ?? false;
+    if (!resume) return;
 
-    if (isTracking) {
-      final startTime = prefs.getString('startTime');
-      final startAddress = prefs.getString('startAddress');
+    setState(() {
+      _isTracking = true;
+      _startTimeHHmm = p.getString('startTime');
+      _addressStart = p.getString('startAddress');
+      _elapsed = Duration(seconds: p.getInt('elapsedSeconds') ?? 0);
+      _frequencyCount = p.getInt('frequencyCount') ?? 0;
+      _totalDistanceMeters = p.getDouble('totalDistance') ?? 0.0;
+    });
 
-      if (startTime != null && startAddress != null) {
-        setState(() {
-          _isTracking = true;
-          _address = startAddress;
-          starNewTime = startTime;
-          _elapsed = Duration(seconds: prefs.getInt('elapsedSeconds') ?? 0);
-          _frequencyCount = prefs.getInt('frequencyCount') ?? 0;
-          _totalDistanceInMeters = prefs.getDouble('totalDistance') ?? 0.0;
-        });
-
-        _startBackgroundTracking();
-      }
+    // restore path
+    final pathStr = p.getString('pathJson');
+    if (pathStr != null && pathStr.isNotEmpty) {
+      final list = (jsonDecode(pathStr) as List)
+          .map((e) => LatLng(
+              (e['lat'] as num).toDouble(), (e['lng'] as num).toDouble()))
+          .toList();
+      _path.clear();
+      _path.addAll(list);
+      _redrawMap();
     }
-  }
 
-  Future<void> _saveTrackingState() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('isTracking', _isTracking);
-    await prefs.setString('startTime', starNewTime ?? '');
-    await prefs.setString('startAddress', _address ?? '');
-    await prefs.setInt('elapsedSeconds', _elapsed.inSeconds);
-    await prefs.setInt('frequencyCount', _frequencyCount);
-    await prefs.setDouble('totalDistance', _totalDistanceInMeters);
-  }
-
-  Future<void> _clearTrackingState() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('isTracking');
-    await prefs.remove('startTime');
-    await prefs.remove('startAddress');
-    await prefs.remove('startPosition');
-    await prefs.remove('elapsedSeconds');
-    await prefs.remove('frequencyCount');
-    await prefs.remove('totalDistance');
-  }
-
-  Future<void> _startBackgroundTracking() async {
-    if (_isTracking) {
-      _timer = Timer.periodic(Duration(seconds: 1), (timer) {
-        setState(() {
-          _elapsed += Duration(seconds: 1);
-          if (_elapsed.inSeconds % 900 == 0) _frequencyCount++;
-        });
-        _saveTrackingState();
-      });
-
-      // Updated location settings configuration
-      LocationSettings locationSettings;
-
-      if (defaultTargetPlatform == TargetPlatform.android) {
-        locationSettings = AndroidSettings(
-          accuracy: LocationAccuracy.bestForNavigation,
-          distanceFilter: 1, // reduce from 5 → more frequent updates
-          intervalDuration: const Duration(seconds: 5),
-          foregroundNotificationConfig: const ForegroundNotificationConfig(
-            notificationText: "SKL HR App  - OnDuty Location tracking active",
-            notificationTitle: " OndDuty Location Tracking",
-            notificationIcon: AndroidResource(
-              name: 'ic_tracker',
-              defType: 'drawable',
-            ),
-            enableWakeLock: true,
-          ),
-        );
-      } else if (defaultTargetPlatform == TargetPlatform.iOS) {
-        locationSettings = AppleSettings(
-          accuracy: LocationAccuracy.bestForNavigation,
-          distanceFilter: 5,
-          activityType: ActivityType.fitness,
-        );
-      } else {
-        locationSettings = LocationSettings(
-          accuracy: LocationAccuracy.bestForNavigation,
-          distanceFilter: 5,
-        );
-      }
-
-      _positionStream = Geolocator.getPositionStream(
-        locationSettings: locationSettings,
-      ).listen((Position position) {
-        LatLng newPoint = LatLng(position.latitude, position.longitude);
-        setState(() {
-          _currentPosition = position;
-          if (_path.isNotEmpty) {
-            _totalDistanceInMeters += Geolocator.distanceBetween(
-              _path.last.latitude,
-              _path.last.longitude,
-              newPoint.latitude,
-              newPoint.longitude,
-            );
-          }
-          _path.add(newPoint);
-        });
-        _saveTrackingState();
-      });
+    // restore start position (optional)
+    final sp = p.getString('startPos');
+    if (sp != null && sp.contains(',')) {
+      final parts = sp.split(',');
+      _startPosition = Position(
+        latitude: double.tryParse(parts[0]) ?? 0,
+        longitude: double.tryParse(parts[1]) ?? 0,
+        timestamp: DateTime.now(),
+        accuracy: 0,
+        altitude: 0,
+        heading: 0,
+        speed: 0,
+        speedAccuracy: 0,
+        altitudeAccuracy: 0,
+        headingAccuracy: 0,
+      );
     }
+
+    _beginTimer();
+    _beginLocationStream();
   }
 
-  Future<void> _startReachedTime() async {
+  // -------- Start / Stop --------
+  Future<void> _onStart() async {
     if (_isTracking) return;
 
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      _showSnackBar('Please enable location services to continue');
+    // 1) Service + permission
+    final enabled = await Geolocator.isLocationServiceEnabled();
+    if (!enabled) {
+      _showSnack('Please enable location services');
       return;
     }
-
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        _showSnackBar('Location permissions are required for this feature');
+    var perm = await Geolocator.checkPermission();
+    if (perm == LocationPermission.denied) {
+      perm = await Geolocator.requestPermission();
+      if (perm == LocationPermission.denied) {
+        _showSnack('Location permission required');
         return;
       }
     }
-
-    if (permission == LocationPermission.deniedForever) {
-      _showSnackBar('Location permissions are permanently denied.');
+    if (perm == LocationPermission.deniedForever) {
+      _showSnack('Location permissions are permanently denied');
       return;
     }
 
+    // 2) Prime current position
+    final pos = await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.bestForNavigation,
+    );
+    _currentPosition = pos;
+    _startPosition = pos;
+
+    // 3) Resolve start address
     try {
-      // Request background location permission for Android
-      if (defaultTargetPlatform == TargetPlatform.android) {
-        await Geolocator.requestPermission();
-      }
-
-      setState(() {
-        _isTracking = true;
-        _path.clear();
-        _totalDistanceInMeters = 0.0;
-      });
-
-      _showSnackBar('📍 Location tracking started');
-
-      DateTime starTime = DateTime.now();
-      starNewTime = _formatEndTime(starTime);
-      List<String> value = starNewTime!.split(":");
-      starNewTime = value[0] + ":" + value[1];
-
-      _currentPosition = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.bestForNavigation,
-      );
-
-      List<Placemark> placemarks = await placemarkFromCoordinates(
-        _currentPosition!.latitude,
-        _currentPosition!.longitude,
-      );
-
+      final placemarks =
+          await placemarkFromCoordinates(pos.latitude, pos.longitude);
       if (placemarks.isNotEmpty) {
-        Placemark place = placemarks.first;
-        List<String> addressComponents = [];
-
-        if (place.street != null && place.street!.isNotEmpty)
-          addressComponents.add(place.street!);
-        if (place.subLocality != null && place.subLocality!.isNotEmpty)
-          addressComponents.add(place.subLocality!);
-        if (place.locality != null && place.locality!.isNotEmpty)
-          addressComponents.add(place.locality!);
-        if (place.administrativeArea != null &&
-            place.administrativeArea!.isNotEmpty)
-          addressComponents.add(place.administrativeArea!);
-        if (place.postalCode != null && place.postalCode!.isNotEmpty)
-          addressComponents.add(place.postalCode!);
-
-        String formattedAddress = addressComponents.join(', ');
-        setState(() {
-          _address = formattedAddress;
-          _showMap = true;
-        });
+        final p = placemarks.first;
+        final parts = <String>[];
+        if ((p.street ?? '').isNotEmpty) parts.add(p.street!);
+        if ((p.subLocality ?? '').isNotEmpty) parts.add(p.subLocality!);
+        if ((p.locality ?? '').isNotEmpty) parts.add(p.locality!);
+        if ((p.administrativeArea ?? '').isNotEmpty)
+          parts.add(p.administrativeArea!);
+        if ((p.postalCode ?? '').isNotEmpty) parts.add(p.postalCode!);
+        _addressStart = parts.join(', ');
       }
+    } catch (_) {}
 
-      await _saveTrackingState();
-      _startBackgroundTracking();
+    // 4) Initialize state
+    setState(() {
+      _isTracking = true;
+      _startTimeHHmm = _fmtHHmm(DateTime.now());
+      _elapsed = Duration.zero;
+      _frequencyCount = 0;
+      _totalDistanceMeters = 0.0;
+      _path
+        ..clear()
+        ..add(LatLng(pos.latitude, pos.longitude));
+      _markers
+        ..clear()
+        ..add(Marker(
+          markerId: const MarkerId('start'),
+          position: LatLng(pos.latitude, pos.longitude),
+          infoWindow: const InfoWindow(title: 'Start'),
+        ));
+    });
 
-      sendNewLocation(
-          globalIDcardNo,
-          screenType,
-          _currentPosition.toString(),
-          starNewTime.toString(),
-          "",
-          _frequencyCount.toString(),
-          _address.toString(),
-          "",
-          true);
-      print("=============================start==================================");
-      print(globalIDcardNo);
-      print(starNewTime);
-      print(_currentPosition);
-      print(_frequencyCount);
-      print(_address);
-      print("===============================================================");
-    } catch (e) {
-      _showSnackBar('Error getting location: ${e.toString()}');
-      setState(() => _isTracking = false);
-    }
+    _redrawMap();
+    _beginTimer();
+    _beginLocationStream();
+    _saveSession();
+
+    _showSnack('📍 Tracking started');
+    // Optional: send "start" to server
+    _sendNewLocation(
+        globalIDcardNo,
+        screenType,
+        pos.toString(),
+        _startTimeHHmm ?? "",
+        "",
+        _frequencyCount.toString(),
+        _addressStart ?? "",
+        "",
+        true);
   }
 
-  void _stopWorkDone() async {
-    DateTime stopTime = DateTime.now();
-    endTime = _formatEndTime(stopTime);
-    List<String> value = endTime!.split(":");
-    endTime = value[0] + ":" + value[1];
+  Future<void> _onStop() async {
+    if (!_isTracking) return;
 
     _timer?.cancel();
-    _positionStream?.cancel();
+    await _positionStream?.cancel();
 
-    Duration duration = _elapsed;
+    final stop = await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.bestForNavigation,
+    );
 
+    // Stop address
     try {
-      Position stopPosition = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.bestForNavigation,
-      );
-
-      List<Placemark> placemarks = await placemarkFromCoordinates(
-        stopPosition.latitude,
-        stopPosition.longitude,
-      );
-
+      final placemarks =
+          await placemarkFromCoordinates(stop.latitude, stop.longitude);
       if (placemarks.isNotEmpty) {
-        Placemark place = placemarks.first;
-        List<String> addressComponents = [];
-
-        if (place.street != null && place.street!.isNotEmpty)
-          addressComponents.add(place.street!);
-        if (place.subLocality != null && place.subLocality!.isNotEmpty)
-          addressComponents.add(place.subLocality!);
-        if (place.locality != null && place.locality!.isNotEmpty)
-          addressComponents.add(place.locality!);
-        if (place.administrativeArea != null &&
-            place.administrativeArea!.isNotEmpty)
-          addressComponents.add(place.administrativeArea!);
-        if (place.postalCode != null && place.postalCode!.isNotEmpty)
-          addressComponents.add(place.postalCode!);
-
-        String formattedAddress = addressComponents.join(', ');
-        setState(() {
-          _address1 = formattedAddress;
-        });
+        final p = placemarks.first;
+        final parts = <String>[];
+        if ((p.street ?? '').isNotEmpty) parts.add(p.street!);
+        if ((p.subLocality ?? '').isNotEmpty) parts.add(p.subLocality!);
+        if ((p.locality ?? '').isNotEmpty) parts.add(p.locality!);
+        if ((p.administrativeArea ?? '').isNotEmpty)
+          parts.add(p.administrativeArea!);
+        if ((p.postalCode ?? '').isNotEmpty) parts.add(p.postalCode!);
+        _addressStop = parts.join(', ');
       }
+    } catch (_) {}
 
-      _showSnackBar(
-        "🏁 Total Distance: ${(_totalDistanceInMeters / 1000).toStringAsFixed(2)} km, ⏱️ ${duration.inMinutes} min",
+    _endTimeHHmm = _fmtHHmm(DateTime.now());
+
+    // Add final point to path
+    if (_path.isEmpty ||
+        (_path.last.latitude != stop.latitude ||
+            _path.last.longitude != stop.longitude)) {
+      _path.add(LatLng(stop.latitude, stop.longitude));
+    }
+
+    // Mark stop on map
+    _markers.removeWhere((m) => m.markerId.value == 'stop');
+    _markers.add(Marker(
+      markerId: const MarkerId('stop'),
+      position: LatLng(stop.latitude, stop.longitude),
+      infoWindow: const InfoWindow(title: 'Stop'),
+    ));
+    _redrawMap();
+
+    final km = (_totalDistanceMeters / 1000).toStringAsFixed(2);
+    _showSnack("🏁 Distance: $km km • ⏱️ ${_elapsed.inMinutes} min");
+
+    setState(() => _isTracking = false);
+    await _sendNewLocation(
+        globalIDcardNo,
+        screenType,
+        stop.toString(),
+        "",
+        _endTimeHHmm ?? "",
+        _frequencyCount.toString(),
+        "",
+        _addressStop ?? "",
+        false);
+
+    await _clearSession();
+  }
+
+  // -------- Timer & Stream --------
+  void _beginTimer() {
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (t) async {
+      setState(() {
+        _elapsed += const Duration(seconds: 1);
+        if (_elapsed.inSeconds % 900 == 0) _frequencyCount++; // every 15 mins
+      });
+      _saveSession();
+    });
+  }
+
+  void _beginLocationStream() {
+    // High frequency & high accuracy for realistic path
+    late LocationSettings settings;
+
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      settings = AndroidSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 1, // meters
+        intervalDuration: const Duration(seconds: 2),
+        foregroundNotificationConfig: const ForegroundNotificationConfig(
+          notificationText: "SKL HR App - OnDuty tracking active",
+          notificationTitle: "OnDuty Location",
+          enableWakeLock: true,
+        ),
       );
+    } else if (defaultTargetPlatform == TargetPlatform.iOS) {
+      settings = AppleSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 3,
+        activityType: ActivityType.fitness,
+        pauseLocationUpdatesAutomatically: false,
+        allowBackgroundLocationUpdates: true,
+      );
+    } else {
+      settings = const LocationSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 3,
+      );
+    }
 
-      setState(() => _isTracking = false);
-      await _clearTrackingState();
+    _positionStream?.cancel();
+    _positionStream = Geolocator.getPositionStream(locationSettings: settings)
+        .listen(_onNewPosition, onError: (e) {
+      _showSnack("Location error: $e");
+    });
+  }
 
-      sendNewLocation(
-          globalIDcardNo,
-          screenType,
-          stopPosition.toString(),
-          "",
-          endTime.toString(),
-          _frequencyCount.toString(),
-          "",
-          _address1.toString(),
-          false);
-      print("=============================stop==================================");
-      print(globalIDcardNo);
-      print(stopPosition);
-      print(endTime);
-      print(_frequencyCount);
-      print(_address1);
-      print(_totalDistanceInMeters.toStringAsFixed(2));
-      print("===============================================================");
-    } catch (e) {
-      _showSnackBar("❌ Error fetching stop location: ${e.toString()}");
+  // -------- Live Distance (point → point with filters) --------
+  void _onNewPosition(Position pos) {
+    if (!_isTracking) return;
+
+    final newPt = LatLng(pos.latitude, pos.longitude);
+
+    // --- First point ---
+    if (_path.isEmpty) {
+      _path.add(newPt);
+      _currentPosition = pos;
+      _redrawMap();
+      _saveSession();
+      print("📍 First point recorded: ${pos.latitude}, ${pos.longitude}");
+      return;
+    }
+
+    // --- Previous point ---
+    final last = _path.last;
+    final meters = Geolocator.distanceBetween(
+      last.latitude,
+      last.longitude,
+      newPt.latitude,
+      newPt.longitude,
+    );
+
+    // --- Time difference (seconds) ---
+    int dt = 1;
+    if (pos.timestamp != null && _currentPosition?.timestamp != null) {
+      dt = pos.timestamp!
+          .difference(_currentPosition!.timestamp!)
+          .inSeconds
+          .abs();
+      if (dt == 0) dt = 1;
+    }
+
+    // --- Speed (m/s) ---
+    final speedMs = meters / dt;
+
+    // --- Dynamic thresholds ---
+    double accuracyLimit;
+    double movedThreshold;
+
+    if (speedMs < 2) {
+      // Walking
+      accuracyLimit = 20; // GPS drift can be ±15-20m
+      movedThreshold = 3; // minimum 3 meters
+    } else if (speedMs < 15) {
+      // Bike
+      accuracyLimit = 25;
+      movedThreshold = 5;
+    } else {
+      // Car
+      accuracyLimit = 50;
+      movedThreshold = 10;
+    }
+
+    // --- Filters ---
+    final isAccurate = pos.accuracy <= accuracyLimit;
+    final movedEnough = meters >= movedThreshold;
+    final reasonableSpeed = speedMs <= 35; // ~126 km/h
+    final notJump = meters <= 200; // ignore big jumps
+
+    // --- Accept / Reject ---
+    if (isAccurate && movedEnough && reasonableSpeed && notJump) {
+      _path.add(newPt);
+      _totalDistanceMeters += meters;
+      _currentPosition = pos;
+
+      if (_path.length % 2 == 0) _redrawMap();
+      _saveSession();
+
+      print("✅ Accepted Move → "
+          "Dist: ${meters.toStringAsFixed(1)} m, "
+          "Speed: ${(speedMs * 3.6).toStringAsFixed(1)} km/h, "
+          "Acc: ${pos.accuracy} m");
+    } else {
+      print("❌ Ignored Drift → "
+          "Dist: ${meters.toStringAsFixed(1)} m, "
+          "Speed: ${(speedMs * 3.6).toStringAsFixed(1)} km/h, "
+          "Acc: ${pos.accuracy} m");
     }
   }
 
-  void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        backgroundColor: _darkColor,
-      ),
+  void _redrawMap() {
+    if (!_showMap || _path.isEmpty) return;
+
+    _polylines
+      ..clear()
+      ..add(Polyline(
+          polylineId: const PolylineId('route'),
+          points: List<LatLng>.from(_path),
+          width: 6,
+          color: Colors.pink));
+
+    // Camera follow
+    final last = _path.last;
+    _mapController?.animateCamera(
+      CameraUpdate.newLatLng(last),
     );
+
+    setState(() {}); // refresh widgets
   }
 
-  Future<void> sendNewLocation(
-      String globalIDcardNo,
-      String type,
-      String coOrdinate,
-      String starTime,
-      String endTime,
-      String frequency,
-      String sAddress,
-      String eAddress,
-      bool start) async {
-    String url = "$ipAddress/api/sendNewLocation";
-
+  // -------- API --------
+  Future<void> _sendNewLocation(
+    String idCardNo,
+    String type,
+    String coordinate,
+    String startTime,
+    String endTime,
+    String frequency,
+    String sAddress,
+    String eAddress,
+    bool start,
+  ) async {
+    final url = "$ipAddress/api/sendNewLocation";
     try {
-      final response = await http.post(
+      final res = await http.post(
         Uri.parse(url),
         headers: {'Content-Type': 'application/json; charset=UTF-8'},
         body: jsonEncode({
-          "IDCARDNO": globalIDcardNo,
+          "IDCARDNO": idCardNo,
           "TYPE": type,
-          "COORDINATE": coOrdinate,
-          "STIME": starTime,
+          "COORDINATE": coordinate,
+          "STIME": startTime,
           "ENDTIME": endTime,
           "STARTADDRESS": sAddress,
           "ENDLOCATION": eAddress,
           "FREQUENCY": frequency,
-          "DISTANCE": _totalDistanceInMeters.toStringAsFixed(2),
+          "DISTANCE": _totalDistanceMeters
+              .toStringAsFixed(2), // keep meters; or send km by converting
           "DURATION": _elapsed.inSeconds.toString(),
         }),
       );
-      final Map<String, dynamic> responseData = json.decode(response.body);
-      if (responseData["status"] == true) {
-        _showSnackBar("${responseData["message"]}");
+
+      final Map<String, dynamic> data = json.decode(res.body);
+      if ((data["status"] ?? false) == true) {
+        _showSnack("${data["message"]}");
       } else {
-        _showErrorDialog("Alert", "${responseData["message"]}");
         if (start) {
           setState(() {
             _isTracking = false;
             _path.clear();
-            _totalDistanceInMeters = 0.0;
+            _totalDistanceMeters = 0.0;
           });
-          await _clearTrackingState();
-          _showErrorDialog("Alert", "Please try again");
+          await _clearSession();
         }
+        _showDialog("Alert", "${data["message"] ?? "Please try again"}");
       }
-    } catch (e) {
-      _showErrorDialog("Connection Error", "Please try again later");
+    } catch (_) {
+      _showDialog("Connection Error", "Please try again later");
     }
   }
 
-  void _showErrorDialog(String title, String content) {
+  void _showDialog(String title, String msg) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (_) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-        content: Text(content),
+        content: Text(msg),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK', style: TextStyle(color: Colors.blue)),
-          ),
+              onPressed: () => Navigator.pop(context), child: const Text('OK')),
         ],
       ),
     );
   }
 
+  // -------- UI --------
+  Future<bool> _onBack() async {
+    if (_isTracking) {
+      _showSnack('Tracking is active. Please stop tracking first.');
+      return false;
+    }
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      key: _scaffoldKey,
-      backgroundColor: Colors.grey[100],
-      appBar: CustomAppBar(
-        onMenuPressed: () {},
-        barTitle: "Update Location",
-      ),
-      drawer: const CustomDrawer(
-        stkTransferCheck: false,
-        brhTransferCheck: false,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 600),
-            child: Column(
-              children: [
-                _buildModernCard(
-                  icon: Icons.location_on,
-                  title: "Start Location",
-                  subtitle: "Tap to Start your OnDuty",
-                  address: _address,
-                  color: _primaryColor,
-                  onTap: _startReachedTime,
-                  isActive: !_isTracking,
-                ),
-                const SizedBox(height: 30),
-                _buildModernCard(
-                  icon: Icons.done_all,
-                  title: "Reached Location",
-                  subtitle: "Tap to Stop and submit this session",
-                  color: _accentColor,
-                  address: _address1,
-                  onTap: _stopWorkDone,
-                  isActive: true,
-                ),
-                if (_isTracking) ...[
-                  const SizedBox(height: 20),
+    return WillPopScope(
+      onWillPop: _onBack,
+      child: Scaffold(
+        key: _scaffoldKey,
+        backgroundColor: Colors.grey[100],
+        appBar: CustomAppBar(onMenuPressed: () {}, barTitle: "Update Location"),
+        drawer: const CustomDrawer(
+            stkTransferCheck: false, brhTransferCheck: false),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 700),
+              child: Column(
+                children: [
+                  if (_showMap) _buildMapCard(),
+                  const SizedBox(height: 16),
+                  _buildActionCard(
+                    icon: Icons.location_on,
+                    title: "Start Location",
+                    subtitle: _isTracking
+                        ? "Tracking already running"
+                        : "Tap to Start your OnDuty",
+                    address: _addressStart,
+                    color: _primaryColor,
+                    onTap: _onStart,
+                    enabled: !_isTracking,
+                  ),
+                  const SizedBox(height: 16),
+                  _buildActionCard(
+                    icon: Icons.flag,
+                    title: "Reached Location",
+                    subtitle: "Tap to Stop and submit this session",
+                    address: _addressStop,
+                    color: _accentColor,
+                    onTap: _onStop,
+                    enabled: true,
+                  ),
+                  if (_isTracking) ...[
+                    const SizedBox(height: 12),
+                    _buildStats(),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),
@@ -482,66 +601,101 @@ class _ReachedWorkPageState extends State<ReachedWorkPage> with WidgetsBindingOb
     );
   }
 
-  Widget _buildModernCard({
+  Widget _buildMapCard() {
+    final start =
+        _path.isNotEmpty ? _path.first : const LatLng(11.1075, 77.3398);
+    return Card(
+      elevation: 5,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: SizedBox(
+        height: 260,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: GoogleMap(
+            initialCameraPosition: CameraPosition(target: start, zoom: 15),
+            onMapCreated: (c) => _mapController = c,
+            polylines: _polylines,
+            markers: _markers,
+            myLocationEnabled: true,
+            myLocationButtonEnabled: true,
+            compassEnabled: true,
+            zoomControlsEnabled: true,
+            tiltGesturesEnabled: false,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStats() {
+    final km = (_totalDistanceMeters / 1000).toStringAsFixed(2);
+    final mins = _elapsed.inMinutes;
+    return Card(
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            const Icon(Icons.timer),
+            const SizedBox(width: 8),
+            Text("Time: $mins min"),
+            const Spacer(),
+            const Icon(Icons.social_distance),
+            const SizedBox(width: 8),
+            Text("Distance: $km km"),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionCard({
     required IconData icon,
     required String title,
     required String subtitle,
-    String? address,
     required Color color,
     required VoidCallback onTap,
-    bool isActive = true,
+    String? address,
+    bool enabled = true,
   }) {
     return Opacity(
-      opacity: isActive ? 1 : 0.5,
+      opacity: enabled ? 1 : 0.6,
       child: Card(
         elevation: 5,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(18),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  CircleAvatar(
-                    backgroundColor: color.withOpacity(0.2),
-                    child: Icon(icon, color: color),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Text(
-                      title,
+              Row(children: [
+                CircleAvatar(
+                    backgroundColor: color.withOpacity(0.15),
+                    child: Icon(icon, color: color)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(title,
                       style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: color,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                subtitle,
-                style: TextStyle(fontSize: 14, color: Colors.black54),
-              ),
-              if (address != null && address.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    const Icon(Icons.place, size: 16, color: Colors.grey),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        address,
-                        style: const TextStyle(
-                            fontSize: 14, color: Colors.black87),
-                      ),
-                    ),
-                  ],
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: color)),
                 ),
+              ]),
+              const SizedBox(height: 8),
+              Text(subtitle,
+                  style: const TextStyle(fontSize: 14, color: Colors.black54)),
+              if ((address ?? '').isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Row(children: [
+                  const Icon(Icons.place, size: 16, color: Colors.grey),
+                  const SizedBox(width: 6),
+                  Expanded(
+                      child:
+                          Text(address!, style: const TextStyle(fontSize: 14))),
+                ]),
               ],
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
@@ -549,18 +703,12 @@ class _ReachedWorkPageState extends State<ReachedWorkPage> with WidgetsBindingOb
                     backgroundColor: color,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
+                        borderRadius: BorderRadius.circular(10)),
                   ),
-                  onPressed: isActive ? onTap : null,
-                  icon: const Icon(
-                    Icons.touch_app,
-                    color: Colors.white,
-                  ),
-                  label: const Text(
-                    "Tap to Continue",
-                    style: TextStyle(color: Colors.white),
-                  ),
+                  onPressed: enabled ? onTap : null,
+                  icon: const Icon(Icons.touch_app, color: Colors.white),
+                  label: const Text("Tap to Continue",
+                      style: TextStyle(color: Colors.white)),
                 ),
               ),
             ],
@@ -570,4 +718,3 @@ class _ReachedWorkPageState extends State<ReachedWorkPage> with WidgetsBindingOb
     );
   }
 }
-
