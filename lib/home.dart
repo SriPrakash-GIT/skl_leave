@@ -45,7 +45,7 @@ class _MainPageState extends State<HomeScreen> {
               _isLoading = false;
               _hasError = true;
             });
-            _showErrorDialog();
+            // _showErrorDialog();
           },
         ),
       )

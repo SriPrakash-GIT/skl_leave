@@ -38,10 +38,33 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+
+            isMinifyEnabled = false
+            isShrinkResources = false
+
         }
     }
 }
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Kotlin standard library
+    implementation("org.jetbrains.kotlin:kotlin-stdlib:1.8.20")
+
+    // Google Play Location Services
+    implementation("com.google.android.gms:play-services-location:21.0.1")
+
+    // AndroidX
+    implementation("androidx.core:core-ktx:1.12.0")
+    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("com.google.android.material:material:1.11.0")
+
+    // Flutter Firebase / plugins if needed
+    implementation(platform("com.google.firebase:firebase-bom:32.2.2"))
+    implementation("com.google.firebase:firebase-analytics")
+    implementation("com.google.android.gms:play-services-base:18.2.0")
+    implementation("com.google.android.gms:play-services-maps:18")
 }

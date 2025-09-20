@@ -22,9 +22,13 @@
           <set>
             <option value="$PROJECT_DIR$/android" />
             <option value="$PROJECT_DIR$/android/app" />
+            <option value="$USER_HOME$/AppData/Local/Pub/Cache/hosted/pub.dev/connectivity_plus-6.1.5/android" />
             <option value="$USER_HOME$/AppData/Local/Pub/Cache/hosted/pub.dev/device_info_plus-10.1.2/android" />
             <option value="$USER_HOME$/AppData/Local/Pub/Cache/hosted/pub.dev/firebase_core-3.15.2/android" />
             <option value="$USER_HOME$/AppData/Local/Pub/Cache/hosted/pub.dev/firebase_messaging-15.2.10/android" />
+            <option value="$USER_HOME$/AppData/Local/Pub/Cache/hosted/pub.dev/flutter_foreground_task-9.1.0/android" />
+            <option value="$USER_HOME$/AppData/Local/Pub/Cache/hosted/pub.dev/flutter_overlay_window-0.4.5/android" />
+            <option value="$USER_HOME$/AppData/Local/Pub/Cache/hosted/pub.dev/flutter_overlay_window_plus-1.0.1/android" />
             <option value="$USER_HOME$/AppData/Local/Pub/Cache/hosted/pub.dev/flutter_plugin_android_lifecycle-2.0.29/android" />
             <option value="$USER_HOME$/AppData/Local/Pub/Cache/hosted/pub.dev/flutter_udid-2.1.1/android" />
             <option value="$USER_HOME$/AppData/Local/Pub/Cache/hosted/pub.dev/fluttertoast-8.2.12/android" />
@@ -33,6 +37,7 @@
             <option value="$USER_HOME$/AppData/Local/Pub/Cache/hosted/pub.dev/google_maps_flutter_android-2.18.1/android" />
             <option value="$USER_HOME$/AppData/Local/Pub/Cache/hosted/pub.dev/image_picker_android-0.8.13/android" />
             <option value="$USER_HOME$/AppData/Local/Pub/Cache/hosted/pub.dev/path_provider_android-2.2.17/android" />
+            <option value="$USER_HOME$/AppData/Local/Pub/Cache/hosted/pub.dev/phone_state-2.1.1/android" />
             <option value="$USER_HOME$/AppData/Local/Pub/Cache/hosted/pub.dev/shared_preferences_android-2.4.11/android" />
             <option value="$USER_HOME$/AppData/Local/Pub/Cache/hosted/pub.dev/url_launcher_android-6.3.17/android" />
             <option value="$USER_HOME$/AppData/Local/Pub/Cache/hosted/pub.dev/webview_flutter_android-4.10.0/android" />

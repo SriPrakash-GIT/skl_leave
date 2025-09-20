@@ -1,26 +1,43 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+
+// Replace with your actual imports
 import 'login.dart';
 import 'custom/appBar.dart';
 import 'custom/sideBar.dart';
 import 'globalVariable.dart';
+import 'mini_map_overlay.dart';
+import 'background_service.dart';
 
 class ReachedWorkPage extends StatefulWidget {
   @override
   _ReachedWorkPageState createState() => _ReachedWorkPageState();
 }
 
+// PiP channel
+class PipManager {
+  static const MethodChannel _channel = MethodChannel('com.sklhr/pip');
+
+  static Future<void> enterPipMode() async {
+    try {
+      await _channel.invokeMethod('enterPiP');
+    } on PlatformException catch (e) {
+      print("Failed to enter PiP mode: ${e.message}");
+    }
+  }
+}
+
 class _ReachedWorkPageState extends State<ReachedWorkPage>
     with WidgetsBindingObserver {
-  // --- UI / State ---
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   GoogleMapController? _mapController;
 
@@ -28,16 +45,16 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
   final Color _accentColor = Colors.purple.shade900;
   final Color _darkColor = const Color(0xFF2D3336);
 
-  String screenType = "Update Location";
   bool _isTracking = false;
-  bool _showMap = true; // show a live mini-map
-
-  // --- Timer / Counters ---
+  bool _showMap = true;
+  bool _isInPipMode = false;
+  bool _startButtonProcessing = false;
+  bool _stopButtonProcessing = false;
+  bool _startButtonClicked = false; // NEW: Track if start button was clicked
   Timer? _timer;
   Duration _elapsed = Duration.zero;
-  int _frequencyCount = 0; // increments every 15 minutes
+  int _frequencyCount = 0;
 
-  // --- Location / Path ---
   StreamSubscription<Position>? _positionStream;
   Position? _currentPosition;
   Position? _startPosition;
@@ -46,11 +63,9 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
   String? _startTimeHHmm;
   String? _endTimeHHmm;
 
-  // Live path (actual route) & distance
   final List<LatLng> _path = [];
   double _totalDistanceMeters = 0.0;
 
-  // Map drawables
   final Set<Polyline> _polylines = {};
   final Set<Marker> _markers = {};
 
@@ -58,7 +73,12 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _restoreSession();
+    print(!_isTracking);
+    print(!_startButtonProcessing);
+    print(!_startButtonClicked);
+    print("Start Button Values ======>");
   }
 
   @override
@@ -70,16 +90,34 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
     super.dispose();
   }
 
-  // -------- Lifecycle awareness (optional toast placeholders) --------
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (!_isTracking) return;
-    // You can show snackbars if needed:
-    // if (state == AppLifecycleState.paused) _showSnack("Tracking continues in background");
-    // if (state == AppLifecycleState.resumed) _showSnack("Back to foreground");
+    if (_isTracking) {
+      if (state == AppLifecycleState.paused) {
+        _enterPipMode();
+      } else if (state == AppLifecycleState.resumed) {
+        _exitPipMode();
+      }
+    }
   }
 
-  // -------- Helpers --------
+  Future<void> _enterPipMode() async {
+    if (!_isInPipMode) {
+      await PipManager.enterPipMode();
+      setState(() {
+        _isInPipMode = true;
+      });
+    }
+  }
+
+  void _exitPipMode() {
+    if (_isInPipMode) {
+      setState(() {
+        _isInPipMode = false;
+      });
+    }
+  }
+
   String _fmtHHmm(DateTime t) =>
       "${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}";
 
@@ -93,16 +131,18 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
     ));
   }
 
+  // --- Session Persistence ---
   Future<void> _saveSession() async {
     final p = await SharedPreferences.getInstance();
     await p.setBool('isTracking', _isTracking);
+    await p.setBool(
+        'startButtonClicked', _startButtonClicked); // NEW: Save button state
     await p.setString('startTime', _startTimeHHmm ?? '');
     await p.setString('startAddress', _addressStart ?? '');
     await p.setInt('elapsedSeconds', _elapsed.inSeconds);
     await p.setInt('frequencyCount', _frequencyCount);
     await p.setDouble('totalDistance', _totalDistanceMeters);
 
-    // Persist path compactly
     final pathJson =
         _path.map((e) => {'lat': e.latitude, 'lng': e.longitude}).toList();
     await p.setString('pathJson', jsonEncode(pathJson));
@@ -115,7 +155,8 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
 
   Future<void> _clearSession() async {
     final p = await SharedPreferences.getInstance();
-    await p.remove('isTracking');
+    await p.setBool('isTracking', false);
+    await p.setBool('startButtonClicked', false);
     await p.remove('startTime');
     await p.remove('startAddress');
     await p.remove('elapsedSeconds');
@@ -128,10 +169,11 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
   Future<void> _restoreSession() async {
     final p = await SharedPreferences.getInstance();
     final resume = p.getBool('isTracking') ?? false;
-    if (!resume) return;
-
+    print(resume);
     setState(() {
-      _isTracking = true;
+      _isTracking = resume;
+      _startButtonClicked = p.getBool('startButtonClicked') ?? resume;
+      print(p.getBool('startButtonClicked')); // NEW: Restore button state
       _startTimeHHmm = p.getString('startTime');
       _addressStart = p.getString('startAddress');
       _elapsed = Duration(seconds: p.getInt('elapsedSeconds') ?? 0);
@@ -139,7 +181,6 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
       _totalDistanceMeters = p.getDouble('totalDistance') ?? 0.0;
     });
 
-    // restore path
     final pathStr = p.getString('pathJson');
     if (pathStr != null && pathStr.isNotEmpty) {
       final list = (jsonDecode(pathStr) as List)
@@ -151,7 +192,6 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
       _redrawMap();
     }
 
-    // restore start position (optional)
     final sp = p.getString('startPos');
     if (sp != null && sp.contains(',')) {
       final parts = sp.split(',');
@@ -169,41 +209,88 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
       );
     }
 
-    _beginTimer();
-    _beginLocationStream();
+    if (resume) {
+      _beginTimer();
+      _beginLocationStream();
+    }
   }
 
-  // -------- Start / Stop --------
-  Future<void> _onStart() async {
-    if (_isTracking) return;
+  void _showErrorDialog(String title, String content) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text(title),
+          content: Text(content),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('OK'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
 
-    // 1) Service + permission
+  // --- Start/Stop Tracking ---
+  Future<void> _onStart() async {
+    print("----------_onStart---------------------------------");
+    // NEW: Prevent multiple clicks
+    if (_startButtonProcessing || _startButtonClicked) return;
+
+    setState(() {
+      _startButtonProcessing = true;
+      _startButtonClicked = true; // NEW: Mark button as clicked
+    });
+
+    _timer?.cancel();
+    await _positionStream?.cancel();
+    // await _clearSession();
+
+    setState(() {
+      _isTracking = false;
+      _elapsed = Duration.zero;
+      _frequencyCount = 0;
+      _totalDistanceMeters = 0.0;
+      _path.clear();
+      _markers.clear();
+      _polylines.clear();
+      _addressStart = "";
+      _addressStop = "";
+      _startTimeHHmm = null;
+      _endTimeHHmm = null;
+      _currentPosition = null;
+      _startPosition = null;
+    });
+
+    // Permission check
     final enabled = await Geolocator.isLocationServiceEnabled();
     if (!enabled) {
       _showSnack('Please enable location services');
+      setState(() => _startButtonProcessing = false);
       return;
     }
+
     var perm = await Geolocator.checkPermission();
-    if (perm == LocationPermission.denied) {
+    if (perm == LocationPermission.denied)
       perm = await Geolocator.requestPermission();
-      if (perm == LocationPermission.denied) {
-        _showSnack('Location permission required');
-        return;
-      }
-    }
-    if (perm == LocationPermission.deniedForever) {
-      _showSnack('Location permissions are permanently denied');
+    if (perm == LocationPermission.denied ||
+        perm == LocationPermission.deniedForever) {
+      _showSnack('Location permission required');
+      setState(() => _startButtonProcessing = false);
       return;
     }
 
-    // 2) Prime current position
+    // Get current position
     final pos = await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.bestForNavigation,
-    );
-    _currentPosition = pos;
-    _startPosition = pos;
+        desiredAccuracy: LocationAccuracy.bestForNavigation);
 
-    // 3) Resolve start address
+    // Get address
+    String? startAddress;
     try {
       final placemarks =
           await placemarkFromCoordinates(pos.latitude, pos.longitude);
@@ -216,59 +303,90 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
         if ((p.administrativeArea ?? '').isNotEmpty)
           parts.add(p.administrativeArea!);
         if ((p.postalCode ?? '').isNotEmpty) parts.add(p.postalCode!);
-        _addressStart = parts.join(', ');
+        startAddress = parts.join(', ');
       }
     } catch (_) {}
 
-    // 4) Initialize state
+    // --- API call first ---
+    bool apiSuccess = false;
+    try {
+      final url = "$ipAddress/api/sendNewLocation";
+      final res = await http.post(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json; charset=UTF-8'},
+        body: jsonEncode({
+          "IDCARDNO": globalIDcardNo,
+          "TYPE": "Start Location",
+          "COORDINATE": pos.toString(),
+          "STIME": _fmtHHmm(DateTime.now()),
+          "ENDTIME": "",
+          "STARTADDRESS": startAddress ?? "",
+          "ENDLOCATION": "",
+          "FREQUENCY": "0",
+          "DISTANCE": "0",
+          "DURATION": "0",
+        }),
+      );
+
+      final data = json.decode(res.body);
+      if ((data["status"] ?? false) == true) {
+        apiSuccess = true;
+
+        _showSnack("${data["message"]}");
+      } else {
+        _showErrorDialog("Error", "${data["message"] ?? "Please try again"}");
+      }
+    } catch (_) {
+      _showSnack("Connection Error");
+    }
+
+    if (!apiSuccess) {
+      setState(() {
+        _startButtonProcessing = false;
+        _startButtonClicked = false; // NEW: Reset if API fails
+      });
+      return; // ❌ Do not update UI or start tracking
+    }
+
+    // --- Only after API success ---
+    _currentPosition = pos;
+    _startPosition = pos;
+
+    await _clearSession();
+
     setState(() {
       _isTracking = true;
       _startTimeHHmm = _fmtHHmm(DateTime.now());
-      _elapsed = Duration.zero;
-      _frequencyCount = 0;
-      _totalDistanceMeters = 0.0;
-      _path
-        ..clear()
-        ..add(LatLng(pos.latitude, pos.longitude));
-      _markers
-        ..clear()
-        ..add(Marker(
-          markerId: const MarkerId('start'),
-          position: LatLng(pos.latitude, pos.longitude),
-          infoWindow: const InfoWindow(title: 'Start'),
-        ));
+      _addressStart = startAddress; // show only if API success
+      _path.add(LatLng(pos.latitude, pos.longitude));
+      _markers.add(Marker(
+        markerId: const MarkerId('start'),
+        position: LatLng(pos.latitude, pos.longitude),
+        infoWindow: const InfoWindow(title: 'Start'),
+      ));
     });
 
     _redrawMap();
     _beginTimer();
     _beginLocationStream();
-    _saveSession();
+    await _saveSession();
+    startBackgroundLocation();
 
-    _showSnack('📍 Tracking started');
-    // Optional: send "start" to server
-    _sendNewLocation(
-        globalIDcardNo,
-        screenType,
-        pos.toString(),
-        _startTimeHHmm ?? "",
-        "",
-        _frequencyCount.toString(),
-        _addressStart ?? "",
-        "",
-        true);
+    setState(() => _startButtonProcessing = false);
   }
 
   Future<void> _onStop() async {
     if (!_isTracking) return;
-
+    setState(() => _stopButtonProcessing = true);
     _timer?.cancel();
     await _positionStream?.cancel();
 
+    // Get current position for stop
     final stop = await Geolocator.getCurrentPosition(
       desiredAccuracy: LocationAccuracy.bestForNavigation,
     );
 
-    // Stop address
+    // Get stop address
     try {
       final placemarks =
           await placemarkFromCoordinates(stop.latitude, stop.longitude);
@@ -287,14 +405,7 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
 
     _endTimeHHmm = _fmtHHmm(DateTime.now());
 
-    // Add final point to path
-    if (_path.isEmpty ||
-        (_path.last.latitude != stop.latitude ||
-            _path.last.longitude != stop.longitude)) {
-      _path.add(LatLng(stop.latitude, stop.longitude));
-    }
-
-    // Mark stop on map
+    // Add Stop marker
     _markers.removeWhere((m) => m.markerId.value == 'stop');
     _markers.add(Marker(
       markerId: const MarkerId('stop'),
@@ -304,57 +415,99 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
     _redrawMap();
 
     final km = (_totalDistanceMeters / 1000).toStringAsFixed(2);
-    _showSnack("🏁 Distance: $km km • ⏱️ ${_elapsed.inMinutes} min");
 
-    setState(() => _isTracking = false);
-    await _sendNewLocation(
-        globalIDcardNo,
-        screenType,
-        stop.toString(),
-        "",
-        _endTimeHHmm ?? "",
-        _frequencyCount.toString(),
-        "",
-        _addressStop ?? "",
-        false);
+    // --- Send API first ---
+    bool apiSuccess = false;
+    try {
+      final url = "$ipAddress/api/sendNewLocation";
+      final res = await http.post(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json; charset=UTF-8'},
+        body: jsonEncode({
+          "IDCARDNO": globalIDcardNo,
+          "TYPE": "Update Location",
+          "COORDINATE": stop.toString(),
+          "STIME": "",
+          "ENDTIME": _endTimeHHmm ?? "",
+          "STARTADDRESS":  "",
+          "ENDLOCATION": _addressStop ?? "",
+          "FREQUENCY": _frequencyCount.toString(),
+          "DISTANCE": _totalDistanceMeters.toStringAsFixed(2),
+          "DURATION": _elapsed.inSeconds.toString(),
+        }),
+      );
 
-    await _clearSession();
+      final Map<String, dynamic> data = json.decode(res.body);
+      if (data["status"] == true) {
+        apiSuccess = true;
+        print("successs response  =========>");
+        _showErrorDialog("Success", "${data["message"]}");
+      } else {
+        _showErrorDialog("Error", "${data["message"] ?? "Please try again"}");
+      }
+    } catch (_) {
+      _showSnack("Connection Error");
+    }
+
+    if (apiSuccess) {
+      print("data clearing =========>");
+      // --- Clear local storage only after API success ---
+      // final p = await SharedPreferences.getInstance();
+      // await p.clear();
+
+      await _clearSession();
+
+      // Reset all in-memory data
+      setState(() {
+        _isTracking = false;
+        _startButtonClicked = false; // NEW: Reset button state
+        _elapsed = Duration.zero;
+        _frequencyCount = 0;
+        _totalDistanceMeters = 0.0;
+        _path.clear();
+        _markers.clear();
+        _polylines.clear();
+        _addressStart = "";
+        _addressStop = "";
+        _startTimeHHmm = null;
+        _endTimeHHmm = null;
+        _currentPosition = null;
+        _startPosition = null;
+      });
+
+      // Exit PiP / foreground
+      _exitPipMode();
+      FlutterForegroundTask.stopService();
+      FlutterOverlayWindow.closeOverlay();
+    }
+    setState(() => _stopButtonProcessing = false);
   }
 
-  // -------- Timer & Stream --------
   void _beginTimer() {
     _timer?.cancel();
-    _timer = Timer.periodic(const Duration(seconds: 1), (t) async {
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) async {
       setState(() {
         _elapsed += const Duration(seconds: 1);
-        if (_elapsed.inSeconds % 900 == 0) _frequencyCount++; // every 15 mins
+        if (_elapsed.inSeconds % 900 == 0) _frequencyCount++;
       });
       _saveSession();
     });
   }
 
   void _beginLocationStream() {
-    // High frequency & high accuracy for realistic path
     late LocationSettings settings;
 
-    if (defaultTargetPlatform == TargetPlatform.android) {
+    if (Theme.of(context).platform == TargetPlatform.android) {
       settings = AndroidSettings(
         accuracy: LocationAccuracy.bestForNavigation,
-        distanceFilter: 1, // meters
+        distanceFilter: 1,
         intervalDuration: const Duration(seconds: 2),
         foregroundNotificationConfig: const ForegroundNotificationConfig(
           notificationText: "SKL HR App - OnDuty tracking active",
           notificationTitle: "OnDuty Location",
+          notificationIcon: AndroidResource(name: "skl"),
           enableWakeLock: true,
         ),
-      );
-    } else if (defaultTargetPlatform == TargetPlatform.iOS) {
-      settings = AppleSettings(
-        accuracy: LocationAccuracy.bestForNavigation,
-        distanceFilter: 3,
-        activityType: ActivityType.fitness,
-        pauseLocationUpdatesAutomatically: false,
-        allowBackgroundLocationUpdates: true,
       );
     } else {
       settings = const LocationSettings(
@@ -370,23 +523,19 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
     });
   }
 
-  // -------- Live Distance (point → point with filters) --------
   void _onNewPosition(Position pos) {
     if (!_isTracking) return;
 
     final newPt = LatLng(pos.latitude, pos.longitude);
 
-    // --- First point ---
     if (_path.isEmpty) {
       _path.add(newPt);
       _currentPosition = pos;
       _redrawMap();
       _saveSession();
-      print("📍 First point recorded: ${pos.latitude}, ${pos.longitude}");
       return;
     }
 
-    // --- Previous point ---
     final last = _path.last;
     final meters = Geolocator.distanceBetween(
       last.latitude,
@@ -395,7 +544,6 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
       newPt.longitude,
     );
 
-    // --- Time difference (seconds) ---
     int dt = 1;
     if (pos.timestamp != null && _currentPosition?.timestamp != null) {
       dt = pos.timestamp!
@@ -405,34 +553,27 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
       if (dt == 0) dt = 1;
     }
 
-    // --- Speed (m/s) ---
     final speedMs = meters / dt;
 
-    // --- Dynamic thresholds ---
     double accuracyLimit;
     double movedThreshold;
 
     if (speedMs < 2) {
-      // Walking
-      accuracyLimit = 20; // GPS drift can be ±15-20m
-      movedThreshold = 3; // minimum 3 meters
+      accuracyLimit = 20;
+      movedThreshold = 3;
     } else if (speedMs < 15) {
-      // Bike
       accuracyLimit = 25;
       movedThreshold = 5;
     } else {
-      // Car
       accuracyLimit = 50;
       movedThreshold = 10;
     }
 
-    // --- Filters ---
     final isAccurate = pos.accuracy <= accuracyLimit;
     final movedEnough = meters >= movedThreshold;
-    final reasonableSpeed = speedMs <= 35; // ~126 km/h
-    final notJump = meters <= 200; // ignore big jumps
+    final reasonableSpeed = speedMs <= 35;
+    final notJump = meters <= 200;
 
-    // --- Accept / Reject ---
     if (isAccurate && movedEnough && reasonableSpeed && notJump) {
       _path.add(newPt);
       _totalDistanceMeters += meters;
@@ -440,16 +581,6 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
 
       if (_path.length % 2 == 0) _redrawMap();
       _saveSession();
-
-      print("✅ Accepted Move → "
-          "Dist: ${meters.toStringAsFixed(1)} m, "
-          "Speed: ${(speedMs * 3.6).toStringAsFixed(1)} km/h, "
-          "Acc: ${pos.accuracy} m");
-    } else {
-      print("❌ Ignored Drift → "
-          "Dist: ${meters.toStringAsFixed(1)} m, "
-          "Speed: ${(speedMs * 3.6).toStringAsFixed(1)} km/h, "
-          "Acc: ${pos.accuracy} m");
     }
   }
 
@@ -464,82 +595,52 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
           width: 6,
           color: Colors.pink));
 
-    // Camera follow
     final last = _path.last;
-    _mapController?.animateCamera(
-      CameraUpdate.newLatLng(last),
-    );
+    _mapController?.animateCamera(CameraUpdate.newLatLng(last));
 
-    setState(() {}); // refresh widgets
+    setState(() {});
   }
 
-  // -------- API --------
-  Future<void> _sendNewLocation(
-    String idCardNo,
-    String type,
-    String coordinate,
-    String startTime,
-    String endTime,
-    String frequency,
-    String sAddress,
-    String eAddress,
-    bool start,
-  ) async {
-    final url = "$ipAddress/api/sendNewLocation";
-    try {
-      final res = await http.post(
-        Uri.parse(url),
-        headers: {'Content-Type': 'application/json; charset=UTF-8'},
-        body: jsonEncode({
-          "IDCARDNO": idCardNo,
-          "TYPE": type,
-          "COORDINATE": coordinate,
-          "STIME": startTime,
-          "ENDTIME": endTime,
-          "STARTADDRESS": sAddress,
-          "ENDLOCATION": eAddress,
-          "FREQUENCY": frequency,
-          "DISTANCE": _totalDistanceMeters
-              .toStringAsFixed(2), // keep meters; or send km by converting
-          "DURATION": _elapsed.inSeconds.toString(),
-        }),
-      );
+  // Future<void> _sendNewLocation(
+  //     String idCardNo,
+  //     String type,
+  //     String coordinate,
+  //     String startTime,
+  //     String endTime,
+  //     String frequency,
+  //     String sAddress,
+  //     String eAddress,
+  //     bool start) async {
+  //   final url = "$ipAddress/api/sendNewLocation";
+  //   try {
+  //     final res = await http.post(
+  //       Uri.parse(url),
+  //       headers: {'Content-Type': 'application/json; charset=UTF-8'},
+  //       body: jsonEncode({
+  //         "IDCARDNO": idCardNo,
+  //         "TYPE": type,
+  //         "COORDINATE": coordinate,
+  //         "STIME": startTime,
+  //         "ENDTIME": endTime,
+  //         "STARTADDRESS": sAddress,
+  //         "ENDLOCATION": eAddress,
+  //         "FREQUENCY": frequency,
+  //         "DISTANCE": _totalDistanceMeters.toStringAsFixed(2),
+  //         "DURATION": _elapsed.inSeconds.toString(),
+  //       }),
+  //     );
+  //
+  //     final Map<String, dynamic> data = json.decode(res.body);
+  //     if ((data["status"] ?? false) == true) {
+  //       _showSnack("${data["message"]}");
+  //     } else {
+  //       _showErrorDialog("Error", "${data["message"] ?? "Please try again"}");
+  //     }
+  //   } catch (_) {
+  //     _showSnack("Connection Error");
+  //   }
+  // }
 
-      final Map<String, dynamic> data = json.decode(res.body);
-      if ((data["status"] ?? false) == true) {
-        _showSnack("${data["message"]}");
-      } else {
-        if (start) {
-          setState(() {
-            _isTracking = false;
-            _path.clear();
-            _totalDistanceMeters = 0.0;
-          });
-          await _clearSession();
-        }
-        _showDialog("Alert", "${data["message"] ?? "Please try again"}");
-      }
-    } catch (_) {
-      _showDialog("Connection Error", "Please try again later");
-    }
-  }
-
-  void _showDialog(String title, String msg) {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-        content: Text(msg),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context), child: const Text('OK')),
-        ],
-      ),
-    );
-  }
-
-  // -------- UI --------
   Future<bool> _onBack() async {
     if (_isTracking) {
       _showSnack('Tracking is active. Please stop tracking first.');
@@ -549,15 +650,21 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
   }
 
   @override
+  @override
   Widget build(BuildContext context) {
     return WillPopScope(
-      onWillPop: _onBack,
+      onWillPop: _onBack, // this should return Future<bool>
       child: Scaffold(
         key: _scaffoldKey,
         backgroundColor: Colors.grey[100],
-        appBar: CustomAppBar(onMenuPressed: () {}, barTitle: "Update Location"),
+        appBar: CustomAppBar(
+          onMenuPressed: () {},
+          barTitle: "Update Location",
+        ),
         drawer: const CustomDrawer(
-            stkTransferCheck: false, brhTransferCheck: false),
+          stkTransferCheck: false,
+          brhTransferCheck: false,
+        ),
         body: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
           child: Center(
@@ -576,7 +683,9 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
                     address: _addressStart,
                     color: _primaryColor,
                     onTap: _onStart,
-                    enabled: !_isTracking,
+                    enabled: !_isTracking &&
+                        !_startButtonProcessing &&
+                        !_startButtonClicked,
                   ),
                   const SizedBox(height: 16),
                   _buildActionCard(
@@ -586,12 +695,10 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
                     address: _addressStop,
                     color: _accentColor,
                     onTap: _onStop,
-                    enabled: true,
+                    enabled: !_stopButtonProcessing && _isTracking,
                   ),
-                  if (_isTracking) ...[
-                    const SizedBox(height: 12),
-                    _buildStats(),
-                  ],
+                  const SizedBox(height: 12),
+                  _buildStats(),
                 ],
               ),
             ),
@@ -630,20 +737,43 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
   Widget _buildStats() {
     final km = (_totalDistanceMeters / 1000).toStringAsFixed(2);
     final mins = _elapsed.inMinutes;
+
     return Card(
       elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
         child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Icon(Icons.timer),
-            const SizedBox(width: 8),
-            Text("Time: $mins min"),
-            const Spacer(),
-            const Icon(Icons.social_distance),
-            const SizedBox(width: 8),
-            Text("Distance: $km km"),
+            Flexible(
+              child: Row(
+                children: [
+                  const Icon(Icons.timer),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      "Time: $mins min",
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Flexible(
+              child: Row(
+                children: [
+                  const Icon(Icons.social_distance),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      "Distance: $km km",
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -687,13 +817,20 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
                   style: const TextStyle(fontSize: 14, color: Colors.black54)),
               if ((address ?? '').isNotEmpty) ...[
                 const SizedBox(height: 8),
-                Row(children: [
-                  const Icon(Icons.place, size: 16, color: Colors.grey),
-                  const SizedBox(width: 6),
-                  Expanded(
-                      child:
-                          Text(address!, style: const TextStyle(fontSize: 14))),
-                ]),
+                Row(
+                  children: [
+                    const Icon(Icons.place, size: 16, color: Colors.grey),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        address ?? "",
+                        style: const TextStyle(fontSize: 14),
+                        overflow:
+                            TextOverflow.ellipsis, // too long text → "..."
+                      ),
+                    ),
+                  ],
+                ),
               ],
               const SizedBox(height: 12),
               SizedBox(

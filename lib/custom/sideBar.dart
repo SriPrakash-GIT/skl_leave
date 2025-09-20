@@ -46,7 +46,7 @@ class CustomDrawer extends StatelessWidget {
                   title: 'Home',
                   route: '/home',
                 ),
-                _buildDrawerItem(
+                _buildDrawerItemLoc(
                   context,
                   condition: true,
                   icon: Icons.location_on_rounded,
@@ -114,6 +114,36 @@ class CustomDrawer extends StatelessWidget {
       onTap: () {
         Navigator.pop(context);
         Navigator.pushNamed(context, route);
+      },
+    );
+  }
+
+  Widget _buildDrawerItemLoc(BuildContext context,
+      {required bool condition,
+      required IconData icon,
+      required String title,
+      required String route}) {
+    if (!condition) return const SizedBox.shrink();
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 25),
+      leading: Icon(icon, color: Colors.blue.shade900),
+      title: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 16,
+          color: Colors.black87,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+      hoverColor: Colors.cyan.withOpacity(0.1),
+      onTap: () {
+        Navigator.pop(context);
+        // Navigator.pushNamed(context, route);
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          route, // your target route
+          (Route<dynamic> r) => false, // remove everything
+        );
       },
     );
   }
