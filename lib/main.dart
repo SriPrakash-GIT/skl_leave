@@ -24,23 +24,32 @@ Future<void> main() async {
 
   await getDeviceID();
 
+  final prefs = await SharedPreferences.getInstance();
+
+  // Load server settings from local storage
+  String savedIp = prefs.getString('server_ip') ?? '';
+  String savedPort = prefs.getString('server_port') ?? '';
+  String savedVersion = prefs.getString('server_version') ?? '';
+
+  if (savedIp.isNotEmpty && savedPort.isNotEmpty && savedVersion.isNotEmpty) {
+    ip = savedIp;
+    port = savedPort;
+    version = savedVersion;
+    ipAddress = 'http://$ip:$port/$version';
+    print("Loaded server IP: $ipAddress");
+  }
+
   getNotificationToken(fcmToken, deviceId);
 
-  final prefs = await SharedPreferences.getInstance();
-  // await prefs.setString("deviceToken", fcmToken);
+  // Load saved login credentials
   String? savedEmployeeId = prefs.getString('employeeId');
   String? savedPassword = prefs.getString('password');
-  // String? deviceNewId = prefs.getString('DeviceIdToken');
 
-  SharedPreferences prefs1 = await SharedPreferences.getInstance();
-  await prefs1.setString('server_ip', ip);
-  await prefs1.setString('server_port', port);
-  await prefs1.setString('server_version', version);
-  ipAddress = 'http://$ip:$port/$version';
   if (savedEmployeeId != null && savedPassword != null) {
     globalIDcardNo = savedEmployeeId;
     chk = true;
   }
+
   runApp(const MyApp());
 }
 
