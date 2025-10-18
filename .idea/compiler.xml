@@ -3,6 +3,24 @@
   <component name="CompilerConfiguration">
     <bytecodeTargetLevel>
       <module name="android.cloud_firestore" target="23" />
+      <module name="android.connectivity_plus" target="21" />
+      <module name="android.device_info_plus" target="21" />
+      <module name="android.firebase_core" target="21" />
+      <module name="android.firebase_messaging" target="21" />
+      <module name="android.flutter_foreground_task" target="21" />
+      <module name="android.flutter_overlay_window" target="21" />
+      <module name="android.flutter_overlay_window_plus" target="21" />
+      <module name="android.flutter_plugin_android_lifecycle" target="21" />
+      <module name="android.flutter_udid" target="21" />
+      <module name="android.fluttertoast" target="21" />
+      <module name="android.geocoding_android" target="21" />
+      <module name="android.geolocator_android" target="21" />
+      <module name="android.google_maps_flutter_android" target="21" />
+      <module name="android.image_picker_android" target="21" />
+      <module name="android.path_provider_android" target="21" />
+      <module name="android.phone_state" target="21" />
+      <module name="android.shared_preferences_android" target="21" />
+      <module name="android.webview_flutter_android" target="21" />
       <module name="io.flutter.plugins.webviewflutter.android.webview_flutter_android" target="23" />
     </bytecodeTargetLevel>
   </component>

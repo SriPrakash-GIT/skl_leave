@@ -52,7 +52,7 @@ flutter {
 
 dependencies {
     // Kotlin standard library
-    implementation("org.jetbrains.kotlin:kotlin-stdlib:1.8.20")
+    implementation("org.jetbrains.kotlin:kotlin-stdlib:1.9.24")
 
     // Google Play Location Services
     implementation("com.google.android.gms:play-services-location:21.0.1")

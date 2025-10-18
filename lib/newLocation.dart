@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
@@ -77,7 +76,6 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
     WidgetsBinding.instance.addObserver(this);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _restoreSession();
-    _checkInternetConnection();
   }
 
   @override
@@ -97,45 +95,6 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
       } else if (state == AppLifecycleState.resumed) {
         _exitPipMode();
       }
-    }
-  }
-
-  Future<void> _checkInternetConnection() async {
-    try {
-      final connectivityResult = await Connectivity().checkConnectivity();
-
-      if (connectivityResult == ConnectivityResult.none) {
-        _showErrorDialog(
-          "No Internet Connection",
-          "Please turn on mobile data or Wi-Fi to continue.",
-        );
-        return;
-      }
-
-      // Try to reach Google lightweight page
-      final response = await http.get(
-        Uri.parse("https://clients3.google.com/generate_204"),
-        headers: {"User-Agent": "FlutterApp"},
-      ).timeout(const Duration(seconds: 5));
-
-      if (response.statusCode != 204) {
-        _showErrorDialog(
-          "Internet Issue",
-          "You are connected but not able to reach the internet.",
-        );
-      } else {
-        print("✅ Internet connection is active.");
-      }
-    } on TimeoutException {
-      _showErrorDialog(
-        "Timeout",
-        "Internet connection is too slow or unreachable.",
-      );
-    } catch (e) {
-      _showErrorDialog(
-        " Connection Error",
-        "Please turn on mobile data.",
-      );
     }
   }
 
@@ -325,7 +284,6 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
       _currentPosition = null;
       _startPosition = null;
     });
-    _checkInternetConnection();
     // Permission check
     final enabled = await Geolocator.isLocationServiceEnabled();
     if (!enabled) {
@@ -435,7 +393,6 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
   }
 
   Future<void> _onStop() async {
-    _checkInternetConnection();
     if (!_isTracking) return;
     setState(() => _stopButtonProcessing = true);
     _timer?.cancel();

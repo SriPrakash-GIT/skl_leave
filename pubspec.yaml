@@ -38,7 +38,7 @@ dependencies:
   geolocator: ^11.0.0
   geocoding: ^2.1.0
   image_picker: ^1.0.4
-  path_provider: ^2.0.15
+  path_provider: ^2.1.4
   flutter_foreground_task: ^9.1.0
   flutter_overlay_window_plus: ^1.0.1
   flutter_overlay_window: ^0.4.5
