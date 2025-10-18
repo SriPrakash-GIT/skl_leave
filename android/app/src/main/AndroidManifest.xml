@@ -17,7 +17,7 @@
         android:required="false" />
 
     <application
-        android:label="Skl_HRApp"
+        android:label="SKL-V9"
         android:name="${applicationName}"
         android:icon="@mipmap/logo"
         android:usesCleartextTraffic="true"
@@ -59,11 +59,7 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
-        <service
-            android:name="com.transistorsoft.flutter.backgroundfetch.HeadlessTask"
-            android:enabled="true"
-            android:exported="true"
-            android:permission="android.permission.BIND_JOB_SERVICE" />
+
 
     </application>
     <!-- Required to query activities that can process text, see:

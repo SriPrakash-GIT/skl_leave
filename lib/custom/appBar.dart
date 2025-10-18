@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
   final VoidCallback onMenuPressed;
   final String barTitle;
+  final bool hasError; // <-- new flag
   final List<Widget>? actions;
 
   const CustomAppBar({
     super.key,
     required this.onMenuPressed,
     required this.barTitle,
+    this.hasError = false, // default false
     this.actions,
   });
 
@@ -38,21 +40,22 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
         elevation: 0,
         automaticallyImplyLeading: false,
         leading: IconButton(
-            icon: const Icon(Icons.menu_rounded, color: Colors.white),
-            onPressed: () {
-              Scaffold.of(context).openDrawer();
-            }),
+          icon: const Icon(Icons.menu_rounded, color: Colors.white),
+          onPressed: () {
+            Scaffold.of(context).openDrawer();
+          },
+        ),
         title: Text(
           barTitle,
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: hasError ? Colors.red : Colors.white, // <-- dynamic color
             fontSize: 20,
             fontWeight: FontWeight.bold,
             letterSpacing: 0.5,
           ),
         ),
         centerTitle: true,
-        actions: [],
+        actions: actions ?? [],
       ),
     );
   }

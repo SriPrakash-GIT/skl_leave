@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/services.dart';
 import 'package:flutter_udid/flutter_udid.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/cupertino.dart';
@@ -23,7 +24,11 @@ Future<void> main() async {
   await PushNotification.init();
 
   await getDeviceID();
-
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.landscapeLeft,
+    DeviceOrientation.landscapeRight,
+  ]);
   final prefs = await SharedPreferences.getInstance();
 
   // Load server settings from local storage
@@ -126,6 +131,16 @@ class MyApp extends StatelessWidget {
       routes: {
         '/home': (context) => HomeScreen(),
         '/newLocation': (context) => ReachedWorkPage(),
+      },
+      builder: (context, child) {
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            // Ensure text scales properly in landscape
+            textScaleFactor:
+                MediaQuery.of(context).textScaleFactor.clamp(0.8, 1.2),
+          ),
+          child: child!,
+        );
       },
     );
   }

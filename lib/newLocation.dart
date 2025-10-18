@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
@@ -46,6 +47,7 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
   final Color _darkColor = const Color(0xFF2D3336);
 
   bool _isTracking = false;
+  bool _hasError = false;
   bool _showMap = true;
   bool _isInPipMode = false;
   bool _startButtonProcessing = false;
@@ -75,10 +77,7 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
     WidgetsBinding.instance.addObserver(this);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _restoreSession();
-    print(!_isTracking);
-    print(!_startButtonProcessing);
-    print(!_startButtonClicked);
-    print("Start Button Values ======>");
+    _checkInternetConnection();
   }
 
   @override
@@ -98,6 +97,45 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
       } else if (state == AppLifecycleState.resumed) {
         _exitPipMode();
       }
+    }
+  }
+
+  Future<void> _checkInternetConnection() async {
+    try {
+      final connectivityResult = await Connectivity().checkConnectivity();
+
+      if (connectivityResult == ConnectivityResult.none) {
+        _showErrorDialog(
+          "No Internet Connection",
+          "Please turn on mobile data or Wi-Fi to continue.",
+        );
+        return;
+      }
+
+      // Try to reach Google lightweight page
+      final response = await http.get(
+        Uri.parse("https://clients3.google.com/generate_204"),
+        headers: {"User-Agent": "FlutterApp"},
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode != 204) {
+        _showErrorDialog(
+          "Internet Issue",
+          "You are connected but not able to reach the internet.",
+        );
+      } else {
+        print("✅ Internet connection is active.");
+      }
+    } on TimeoutException {
+      _showErrorDialog(
+        "Timeout",
+        "Internet connection is too slow or unreachable.",
+      );
+    } catch (e) {
+      _showErrorDialog(
+        " Connection Error",
+        "Please turn on mobile data.",
+      );
     }
   }
 
@@ -236,6 +274,27 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
     );
   }
 
+  void _showSuccessDialog(String title, String content) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text(title),
+          content: Text(content),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('OK'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   // --- Start/Stop Tracking ---
   Future<void> _onStart() async {
     print("----------_onStart---------------------------------");
@@ -266,11 +325,11 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
       _currentPosition = null;
       _startPosition = null;
     });
-
+    _checkInternetConnection();
     // Permission check
     final enabled = await Geolocator.isLocationServiceEnabled();
     if (!enabled) {
-      _showSnack('Please enable location services');
+      _showErrorDialog("Error", "Please enable location services");
       setState(() => _startButtonProcessing = false);
       return;
     }
@@ -280,7 +339,7 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
       perm = await Geolocator.requestPermission();
     if (perm == LocationPermission.denied ||
         perm == LocationPermission.deniedForever) {
-      _showSnack('Location permission required');
+      _showErrorDialog("Error", "Location permission required");
       setState(() => _startButtonProcessing = false);
       return;
     }
@@ -376,6 +435,7 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
   }
 
   Future<void> _onStop() async {
+    _checkInternetConnection();
     if (!_isTracking) return;
     setState(() => _stopButtonProcessing = true);
     _timer?.cancel();
@@ -414,9 +474,6 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
     ));
     _redrawMap();
 
-    final km = (_totalDistanceMeters / 1000).toStringAsFixed(2);
-
-    // --- Send API first ---
     bool apiSuccess = false;
     try {
       final url = "$ipAddress/api/sendNewLocation";
@@ -429,7 +486,7 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
           "COORDINATE": stop.toString(),
           "STIME": "",
           "ENDTIME": _endTimeHHmm ?? "",
-          "STARTADDRESS":  "",
+          "STARTADDRESS": "",
           "ENDLOCATION": _addressStop ?? "",
           "FREQUENCY": _frequencyCount.toString(),
           "DISTANCE": _totalDistanceMeters.toStringAsFixed(2),
@@ -440,8 +497,7 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
       final Map<String, dynamic> data = json.decode(res.body);
       if (data["status"] == true) {
         apiSuccess = true;
-        print("successs response  =========>");
-        _showErrorDialog("Success", "${data["message"]}");
+        _showSuccessDialog("Success", "${data["message"]}");
       } else {
         _showErrorDialog("Error", "${data["message"] ?? "Please try again"}");
       }
@@ -450,17 +506,12 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
     }
 
     if (apiSuccess) {
-      print("data clearing =========>");
-      // --- Clear local storage only after API success ---
-      // final p = await SharedPreferences.getInstance();
-      // await p.clear();
-
       await _clearSession();
 
       // Reset all in-memory data
       setState(() {
         _isTracking = false;
-        _startButtonClicked = false; // NEW: Reset button state
+        _startButtonClicked = false;
         _elapsed = Duration.zero;
         _frequencyCount = 0;
         _totalDistanceMeters = 0.0;
@@ -500,8 +551,9 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
     if (Theme.of(context).platform == TargetPlatform.android) {
       settings = AndroidSettings(
         accuracy: LocationAccuracy.bestForNavigation,
-        distanceFilter: 1,
-        intervalDuration: const Duration(seconds: 2),
+        distanceFilter: 0,
+        intervalDuration: const Duration(milliseconds: 800),
+        forceLocationManager: false,
         foregroundNotificationConfig: const ForegroundNotificationConfig(
           notificationText: "SKL HR App - OnDuty tracking active",
           notificationTitle: "OnDuty Location",
@@ -512,15 +564,22 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
     } else {
       settings = const LocationSettings(
         accuracy: LocationAccuracy.bestForNavigation,
-        distanceFilter: 3,
+        distanceFilter: 0,
+        timeLimit: null,
       );
     }
 
     _positionStream?.cancel();
-    _positionStream = Geolocator.getPositionStream(locationSettings: settings)
-        .listen(_onNewPosition, onError: (e) {
-      _showSnack("Location error: $e");
-    });
+
+    _positionStream =
+        Geolocator.getPositionStream(locationSettings: settings).listen(
+      (Position pos) {
+        _onNewPosition(pos);
+      },
+      onError: (e) {
+        _showSnack("Location error: $e");
+      },
+    );
   }
 
   void _onNewPosition(Position pos) {
@@ -528,6 +587,7 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
 
     final newPt = LatLng(pos.latitude, pos.longitude);
 
+    // first point
     if (_path.isEmpty) {
       _path.add(newPt);
       _currentPosition = pos;
@@ -544,6 +604,7 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
       newPt.longitude,
     );
 
+    // time difference
     int dt = 1;
     if (pos.timestamp != null && _currentPosition?.timestamp != null) {
       dt = pos.timestamp!
@@ -554,34 +615,33 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
     }
 
     final speedMs = meters / dt;
+    final speedKmh = speedMs * 3.6;
 
-    double accuracyLimit;
-    double movedThreshold;
+    final notJump = meters < 200;
+    final realisticSpeed = speedKmh < 180;
 
-    if (speedMs < 2) {
-      accuracyLimit = 20;
-      movedThreshold = 3;
-    } else if (speedMs < 15) {
-      accuracyLimit = 25;
-      movedThreshold = 5;
-    } else {
-      accuracyLimit = 50;
-      movedThreshold = 10;
-    }
+    if (notJump && realisticSpeed) {
+      final smoothed = _smoothPoint(_currentPosition, pos);
 
-    final isAccurate = pos.accuracy <= accuracyLimit;
-    final movedEnough = meters >= movedThreshold;
-    final reasonableSpeed = speedMs <= 35;
-    final notJump = meters <= 200;
-
-    if (isAccurate && movedEnough && reasonableSpeed && notJump) {
-      _path.add(newPt);
+      _path.add(smoothed);
       _totalDistanceMeters += meters;
       _currentPosition = pos;
 
       if (_path.length % 2 == 0) _redrawMap();
       _saveSession();
     }
+  }
+
+  LatLng _smoothPoint(Position? prev, Position current) {
+    if (prev == null) return LatLng(current.latitude, current.longitude);
+
+    const smoothFactor = 0.6;
+    final lat =
+        prev.latitude + (current.latitude - prev.latitude) * smoothFactor;
+    final lon =
+        prev.longitude + (current.longitude - prev.longitude) * smoothFactor;
+
+    return LatLng(lat, lon);
   }
 
   void _redrawMap() {
@@ -601,46 +661,6 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
     setState(() {});
   }
 
-  // Future<void> _sendNewLocation(
-  //     String idCardNo,
-  //     String type,
-  //     String coordinate,
-  //     String startTime,
-  //     String endTime,
-  //     String frequency,
-  //     String sAddress,
-  //     String eAddress,
-  //     bool start) async {
-  //   final url = "$ipAddress/api/sendNewLocation";
-  //   try {
-  //     final res = await http.post(
-  //       Uri.parse(url),
-  //       headers: {'Content-Type': 'application/json; charset=UTF-8'},
-  //       body: jsonEncode({
-  //         "IDCARDNO": idCardNo,
-  //         "TYPE": type,
-  //         "COORDINATE": coordinate,
-  //         "STIME": startTime,
-  //         "ENDTIME": endTime,
-  //         "STARTADDRESS": sAddress,
-  //         "ENDLOCATION": eAddress,
-  //         "FREQUENCY": frequency,
-  //         "DISTANCE": _totalDistanceMeters.toStringAsFixed(2),
-  //         "DURATION": _elapsed.inSeconds.toString(),
-  //       }),
-  //     );
-  //
-  //     final Map<String, dynamic> data = json.decode(res.body);
-  //     if ((data["status"] ?? false) == true) {
-  //       _showSnack("${data["message"]}");
-  //     } else {
-  //       _showErrorDialog("Error", "${data["message"] ?? "Please try again"}");
-  //     }
-  //   } catch (_) {
-  //     _showSnack("Connection Error");
-  //   }
-  // }
-
   Future<bool> _onBack() async {
     if (_isTracking) {
       _showSnack('Tracking is active. Please stop tracking first.');
@@ -653,13 +673,14 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
-      onWillPop: _onBack, // this should return Future<bool>
+      onWillPop: _onBack,
       child: Scaffold(
         key: _scaffoldKey,
         backgroundColor: Colors.grey[100],
         appBar: CustomAppBar(
           onMenuPressed: () {},
           barTitle: "Update Location",
+          hasError: _hasError,
         ),
         drawer: const CustomDrawer(
           stkTransferCheck: false,
@@ -698,7 +719,6 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
                     enabled: !_stopButtonProcessing && _isTracking,
                   ),
                   const SizedBox(height: 12),
-                  _buildStats(),
                 ],
               ),
             ),
@@ -729,52 +749,6 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
             zoomControlsEnabled: true,
             tiltGesturesEnabled: false,
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStats() {
-    final km = (_totalDistanceMeters / 1000).toStringAsFixed(2);
-    final mins = _elapsed.inMinutes;
-
-    return Card(
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Flexible(
-              child: Row(
-                children: [
-                  const Icon(Icons.timer),
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: Text(
-                      "Time: $mins min",
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Flexible(
-              child: Row(
-                children: [
-                  const Icon(Icons.social_distance),
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: Text(
-                      "Distance: $km km",
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
         ),
       ),
     );

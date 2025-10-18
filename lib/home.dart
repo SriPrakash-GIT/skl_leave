@@ -74,6 +74,7 @@ class _MainPageState extends State<HomeScreen> {
       appBar: CustomAppBar(
         onMenuPressed: () {},
         barTitle: "S.K.L EXPORTS",
+        hasError: _hasError,
       ),
       drawer: const CustomDrawer(
         stkTransferCheck: false,
