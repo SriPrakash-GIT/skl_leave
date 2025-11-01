@@ -17,6 +17,9 @@ import 'custom/sideBar.dart';
 import 'globalVariable.dart';
 import 'mini_map_overlay.dart';
 import 'background_service.dart';
+import 'package:disable_battery_optimization/disable_battery_optimization.dart';
+// import 'dart:io'; // ADDED for file logging
+// import 'package:path_provider/path_provider.dart'; // ADDED for file logging
 
 class ReachedWorkPage extends StatefulWidget {
   @override
@@ -62,6 +65,7 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
   String? _addressStop = "";
   String? _startTimeHHmm;
   String? _endTimeHHmm;
+  String _debugText = '';
 
   final List<LatLng> _path = [];
   double _totalDistanceMeters = 0.0;
@@ -115,6 +119,123 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
       setState(() {
         _isInPipMode = false;
       });
+    }
+  }
+
+  void _updateDebugText(String msg) {
+    setState(() => _debugText = msg);
+  }
+
+  // Future<void> _logToFile(String msg) async {
+  //   try {
+  //     // Try external storage (visible in file manager)
+  //     final dir = await getExternalStorageDirectory();
+  //     final downloadsDir = Directory('${dir?.path}/Download');
+  //
+  //     if (!await downloadsDir.exists()) {
+  //       await downloadsDir.create(recursive: true);
+  //     }
+  //
+  //     final file = File('${downloadsDir.path}/gps_debug_log.txt');
+  //     await file.writeAsString('[${DateTime.now()}] $msg\n', mode: FileMode.append);
+  //
+  //     print('📁 File saved to: ${file.path}'); // This will show exact path
+  //
+  //   } catch (e) {
+  //     print('❌ External storage failed: $e');
+  //
+  //     // Fallback to private storage
+  //     final dir = await getApplicationDocumentsDirectory();
+  //     final file = File('${dir.path}/gps_debug_log.txt');
+  //     await file.writeAsString('[${DateTime.now()}] $msg\n', mode: FileMode.append);
+  //   }
+  // }
+
+  Future<void> _handleBatteryOptimization() async {
+    try {
+      // Check if battery optimization is disabled (returns true if already disabled)
+      bool? isOptimizationDisabled = await DisableBatteryOptimization.isBatteryOptimizationDisabled;
+
+      if (!isOptimizationDisabled!) {
+        // Battery optimization is still enabled - show dialog to disable it
+        _showBatteryOptimizationDialog();
+      } else {
+        print("Battery optimization already disabled");
+      }
+    } catch (e) {
+      print('Error checking battery optimization: $e');
+      _showBatteryOptimizationDialog(); // Show anyway as fallback
+    }
+  }
+
+  void _showBatteryOptimizationDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Text("🔋 Battery Optimization Required"),
+        content: Text(
+            "For reliable background location tracking, please disable battery optimization.\n\n"
+                "This ensures tracking continues when screen is off or app is in background."
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text("Skip"),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _disableAllBatteryOptimizations();
+            },
+            child: Text("Disable Now"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _disableAllBatteryOptimizations() async {
+    try {
+      // This shows the system dialog to disable native battery optimization
+      await DisableBatteryOptimization.showDisableBatteryOptimizationSettings();
+
+      // Also show manufacturer-specific optimization settings if needed
+      final bool? isManOptimized = await DisableBatteryOptimization.isManufacturerBatteryOptimizationDisabled;
+      if (!isManOptimized!) {
+        await Future.delayed(Duration(seconds: 2));
+        await DisableBatteryOptimization.showDisableManufacturerBatteryOptimizationSettings(
+            "Your device has additional battery optimization",
+            "Follow the steps to disable optimizations for reliable tracking"
+        );
+      }
+
+      // Show auto-start settings for devices that support it
+      final bool? isAutoStartEnabled = await DisableBatteryOptimization.isAutoStartEnabled;
+      if (!isAutoStartEnabled!) {
+        await Future.delayed(Duration(seconds: 4));
+        await DisableBatteryOptimization.showEnableAutoStartSettings(
+            "Enable Auto Start",
+            "Follow the steps to enable auto-start for background tracking"
+        );
+      }
+
+    } catch (e) {
+      print('Error disabling battery optimization: $e');
+      _showSnack("Please disable battery optimization manually in Settings");
+    }
+  }
+
+// Optional: Check all optimizations at once
+  Future<void> _checkAllOptimizations() async {
+    try {
+      final bool? allDisabled = await DisableBatteryOptimization.isAllBatteryOptimizationDisabled;
+
+      if (!allDisabled!) {
+        _showBatteryOptimizationDialog();
+      }
+    } catch (e) {
+      print('Error checking all optimizations: $e');
     }
   }
 
@@ -249,6 +370,7 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
 
     _timer?.cancel();
     await _positionStream?.cancel();
+
     // await _clearSession();
 
     setState(() {
@@ -274,6 +396,8 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
       setState(() => _startButtonProcessing = false);
       return;
     }
+
+    await _checkAllOptimizations();
 
     var perm = await Geolocator.checkPermission();
     if (perm == LocationPermission.denied)
@@ -348,7 +472,6 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
       return; // ❌ Do not update UI or start tracking
     }
 
-    // --- Only after API success ---
     _currentPosition = pos;
     _startPosition = pos;
 
@@ -574,6 +697,23 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
     final reasonableSpeed = speedMs <= 35;
     final notJump = meters <= 200;
 
+    // if (!isAccurate) {
+    //   _updateDebugText('Low accuracy: ${pos.accuracy}');
+    //   _logToFile('Skipped low accuracy: ${pos.accuracy}');
+    // }
+    // if (!movedEnough) {
+    //   _updateDebugText('Small move: ${meters.toStringAsFixed(1)}m');
+    //   _logToFile('Skipped small move: $meters');
+    // }
+    // if (!reasonableSpeed) {
+    //   _updateDebugText('Too fast: ${speedMs.toStringAsFixed(1)} m/s');
+    //   _logToFile('Skipped fast speed: $speedMs');
+    // }
+    // if (!notJump) {
+    //   _updateDebugText('Jump: ${meters.toStringAsFixed(1)}m');
+    //   _logToFile('Skipped GPS jump: $meters');
+    // }
+
     if (isAccurate && movedEnough && reasonableSpeed && notJump) {
       _path.add(newPt);
       _totalDistanceMeters += meters;
@@ -665,7 +805,8 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
           stkTransferCheck: false,
           brhTransferCheck: false,
         ),
-        body: SingleChildScrollView(
+        body:
+        SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
           child: Center(
             child: ConstrainedBox(
@@ -704,6 +845,7 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
             ),
           ),
         ),
+
       ),
     );
   }
