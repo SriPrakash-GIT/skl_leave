@@ -838,8 +838,10 @@ class _ReachedWorkPageState extends State<ReachedWorkPage>
                     onTap: _onStop,
                     enabled: !_stopButtonProcessing && _isTracking,
                   ),
-                  const SizedBox(height: 12),
-                  _buildStats(),
+                  if (_isTracking) ...[
+                    const SizedBox(height: 12),
+                    _buildStats(),
+                  ],
                 ],
               ),
             ),
