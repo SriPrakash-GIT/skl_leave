@@ -129,7 +129,6 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  // Fetch login API
   Future<void> fetchCheckPassword(String userid, String hashedPassword,
       String deviceId, String fcmToken) async {
     String url = "$ipAddress/api/LoginData";

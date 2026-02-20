@@ -41,6 +41,8 @@ class PipManager {
 
 class _ReachedWorkPageState extends State<ReachedWorkPage>
     with WidgetsBindingObserver {
+
+
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   GoogleMapController? _mapController;
 
