@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import 'custom/appBar.dart';
@@ -17,6 +20,22 @@ class _MainPageState extends State<HomeScreen> {
   bool _isLoading = true;
   bool _hasError = false;
 
+  Future<void> _requestPermissions() async {
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (Platform.isAndroid && permission != LocationPermission.always) {
+      // Request "always" permission
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.always) {
+      // Permission granted – you can now start monitoring
+    } else {
+      // Show dialog explaining why background location is needed
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -25,7 +44,10 @@ class _MainPageState extends State<HomeScreen> {
 
   void _loadWebView() {
     final url = '$ipAddress/$globalIDcardNo';
+    print(url);
+    print("web url");
 
+    // final url="https://google.com";
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(
@@ -42,6 +64,8 @@ class _MainPageState extends State<HomeScreen> {
             });
           },
           onWebResourceError: (WebResourceError error) {
+            print("Error: ${error.description}");
+            print("Error code: ${error.errorCode}");
             setState(() {
               _isLoading = false;
               _hasError = true;
@@ -71,6 +95,7 @@ class _MainPageState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // _requestPermissions(); // Request permissions (if needed)
     return Scaffold(
       appBar: CustomAppBar(
         onMenuPressed: () {},

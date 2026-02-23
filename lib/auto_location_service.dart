@@ -9,14 +9,13 @@ class AutoLocationService {
 
   static bool _isInitialized = false;
 
-
   static Future<void> initialize() async {
     if (_isInitialized) return;
 
     WidgetsFlutterBinding.ensureInitialized();
 
     final prefs = await SharedPreferences.getInstance();
-    final wasActive = prefs.getBool('monitoring_active') ?? false;
+    final wasActive = true;
 
     if (wasActive) {
       await AutoLocationMonitor.startMonitoring();
@@ -30,5 +29,9 @@ class AutoLocationService {
     if (fixedLoc != null) {
       await AutoLocationMonitor.saveFixedLocation(fixedLoc);
     }
+  }
+
+  static Future<void> resetAlertStates() async {
+    await AutoLocationMonitor.resetAlertStates();
   }
 }

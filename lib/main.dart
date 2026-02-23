@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:workmanager/workmanager.dart';
+import 'package:permission_handler/permission_handler.dart' as permissionHandler;
 import 'firebase_options.dart';
 import 'globalVariable.dart';
 import 'home.dart';
@@ -21,237 +21,240 @@ late String? deviceId = "";
 String? deviceType;
 late var chk = false;
 
+Future<void> main() async {
+  try {
+    WidgetsFlutterBinding.ensureInitialized();
 
-@pragma('vm:entry-point')
-void callbackDispatcher() {
-  Workmanager().executeTask((task, inputData) async {
-    print("🔔 WorkManager task executed: $task at ${DateTime.now()}");
+    print("await 1");
+    // Initialize Firebase
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+
+    print("await 2");
+    // Initialize notifications (needed for showing permission reminders)
+    await AutoLocationMonitor.initNotifications();
+
+    print("await 3");
 
     try {
-      // Ensure Flutter bindings are initialized
-      WidgetsFlutterBinding.ensureInitialized();
+      await PushNotification.init();
+    }catch(e){
+      print("Notification Error: $e");
+    }
+    print("await 4");
+    await getDeviceID();
 
-      // Initialize Firebase
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
+    print("await 5");
+    final prefs = await SharedPreferences.getInstance();
 
-      // CRITICAL: Initialize location services in background isolate
-      // FIXED: Added await here
-      if (!await Geolocator.isLocationServiceEnabled()) {
-        print("⚠️ Location services are disabled");
-      }
+    // Load server settings
+    String savedIp = prefs.getString('server_ip') ?? '';
+    String savedPort = prefs.getString('server_port') ?? '';
+    String savedVersion = prefs.getString('server_version') ?? '';
 
-      // Check if we can access location in background
-      LocationPermission permission = await Geolocator.checkPermission();
-      print("📱 Background location permission: $permission");
-
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        print("❌ Cannot access location in background - insufficient permissions");
-        return Future.value(true);
-      }
-
-      // Initialize notifications
-      final FlutterLocalNotificationsPlugin notifications =
-      FlutterLocalNotificationsPlugin();
-
-      const AndroidInitializationSettings androidSettings =
-      AndroidInitializationSettings('@mipmap/ic_launcher');
-
-      final DarwinInitializationSettings iosSettings =
-      DarwinInitializationSettings();
-
-      final InitializationSettings initSettings = InitializationSettings(
-        android: androidSettings,
-        iOS: iosSettings,
-      );
-
-      await notifications.initialize(initSettings);
-
-      // Create notification channel
-      const AndroidNotificationChannel channel = AndroidNotificationChannel(
-        'auto_monitor_channel',
-        'Auto Location Monitor',
-        description: 'Channel for location monitoring notifications',
-        importance: Importance.high,
-        enableVibration: true,
-        playSound: true,
-      );
-
-      final androidImpl = notifications.resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin>();
-
-      if (androidImpl != null) {
-        await androidImpl.createNotificationChannel(channel);
-        print("✅ Notification channel created");
-      }
-
-      // Assign notifications instance
-      AutoLocationMonitor.setNotificationsInstance(notifications);
-
-      // Load SharedPreferences
-      final prefs = await SharedPreferences.getInstance();
-
-      // Load server settings
-      String savedIp = prefs.getString('server_ip') ?? '';
-      String savedPort = prefs.getString('server_port') ?? '';
-      String savedVersion = prefs.getString('server_version') ?? '';
-
-      if (savedIp.isNotEmpty && savedPort.isNotEmpty && savedVersion.isNotEmpty) {
-        ip = savedIp;
-        port = savedPort;
-        version = savedVersion;
-        ipAddress = 'http://$ip:$port/$version';
-        print("Background loaded server: $ipAddress");
-      }
-
-      // Load employee ID
-      final idCard = prefs.getString('employeeId');
-      if (idCard == null) {
-        print("❌ No employee ID found");
-        return Future.value(true);
-      }
-      globalIDcardNo = idCard;
-
-      // Check if monitoring is active
-      final isActive = prefs.getBool('monitoring_active') ?? false;
-      if (!isActive) {
-        print("📴 Monitoring not active");
-        return Future.value(true);
-      }
-
-      print("✅ Background isolate ready");
-
-      // Execute the task
-      if (task == 'checkLocationAndNotify') {
-        print("📍 Executing checkLocationAndNotify");
-        await AutoLocationMonitor.checkLocationAndNotify();
-        print("✅ Completed checkLocationAndNotify");
-      }
-    } catch (e, stackTrace) {
-      print("❌ Error in WorkManager task: $e");
-      print("Stack trace: $stackTrace");
+    if (savedIp.isNotEmpty && savedPort.isNotEmpty && savedVersion.isNotEmpty) {
+      ip = savedIp;
+      port = savedPort;
+      version = savedVersion;
+      ipAddress = 'http://$ip:$port/$version';
+      print("Loaded server IP: $ipAddress");
     }
 
-    return Future.value(true);
-  });
-}
+    print("await 6");
+    await getNotificationToken(fcmToken, deviceId);
 
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+    // Load saved login credentials
+    String? savedEmployeeId = prefs.getString('employeeId');
+    String? savedPassword = prefs.getString('password');
 
-  // Initialize Firebase
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+    if (savedEmployeeId != null && savedPassword != null) {
+      globalIDcardNo = savedEmployeeId;
+      chk = true;
 
-
-  await Workmanager().initialize(
-    callbackDispatcher,
-    isInDebugMode: false, // Set to false in production
-  );
-
-  print("🚀 WorkManager initialized");
-
-  // Initialize notifications
-  await AutoLocationMonitor.initNotifications();
-
-  // Initialize other services
-  await PushNotification.init();
-  await getDeviceID();
-
-  final prefs = await SharedPreferences.getInstance();
-
-  // Load server settings
-  String savedIp = prefs.getString('server_ip') ?? '';
-  String savedPort = prefs.getString('server_port') ?? '';
-  String savedVersion = prefs.getString('server_version') ?? '';
-
-  if (savedIp.isNotEmpty && savedPort.isNotEmpty && savedVersion.isNotEmpty) {
-    ip = savedIp;
-    port = savedPort;
-    version = savedVersion;
-    ipAddress = 'http://$ip:$port/$version';
-    print("Loaded server IP: $ipAddress");
-  }
-
-  await getNotificationToken(fcmToken, deviceId);
-
-  // Load saved login credentials
-  String? savedEmployeeId = prefs.getString('employeeId');
-  String? savedPassword = prefs.getString('password');
-
-  if (savedEmployeeId != null && savedPassword != null) {
-    globalIDcardNo = savedEmployeeId;
-    chk = true;
-
-    // Restore monitoring if it was active
-    bool wasMonitoringActive = prefs.getBool('monitoring_active') ?? false;
-    if (wasMonitoringActive) {
-      print("🔄 Restoring monitoring service");
-      // Re-register the periodic task
-      await registerPeriodicTask();
+      // 🔐 Handle location permission for 24/7 monitoring
+      if (Platform.isAndroid) {
+        print("await 7");
+        await _handleAndroidLocationPermission();
+      } else {
+        print("await 8");
+        // iOS handling
+        await _handleIOSLocationPermission();
+      }
     }
-  }
 
-  runApp(const MyApp());
-}
+    print("check location 1");
+    // Initialize notifications and location monitor
+    await AutoLocationMonitor.initialize();
+    print("check location 2");
 
+    // Restore monitoring state if it was active
+    await AutoLocationMonitor.restoreMonitoringState();
+    print("check location 4");
 
-// Separate function to register periodic task
-Future<void> registerPeriodicTask() async {
-  try {
-    // Cancel any existing tasks
-    await Workmanager().cancelByUniqueName('auto-location-check');
-
-    // Register with correct constraints for Android
-    await Workmanager().registerPeriodicTask(
-      "auto-location-check",
-      "checkLocationAndNotify",
-      frequency: const Duration(minutes: 15),
-      initialDelay: const Duration(seconds: 30),
-      constraints: Constraints(
-        networkType: NetworkType.connected, // Need network for API calls
-        requiresBatteryNotLow: false,
-        requiresCharging: false,
-        requiresDeviceIdle: false, // Allow running when device not idle
-        requiresStorageNotLow: false,
-      ),
-      existingWorkPolicy: ExistingWorkPolicy.replace,
-      backoffPolicy: BackoffPolicy.exponential,
-      backoffPolicyDelay: const Duration(seconds: 10),
-    );
-
-    print("✅ WorkManager periodic task registered");
-
-    // For Android, also register a one-time task to verify
-    await Workmanager().registerOneOffTask(
-      "initial-check",
-      "checkLocationAndNotify",
-      initialDelay: const Duration(seconds: 5),
-      constraints: Constraints(
-        networkType: NetworkType.connected,
-      ),
-    );
-
+    runApp(const MyApp());
   } catch (e) {
-    print("❌ Failed to register periodic task: $e");
+    print("$e  main error");
   }
 }
-// Also add this to handle boot complete
-Future<void> initializeAfterBoot() async {
+
+/// Handle Android location permission with "Allow all the time" option
+Future<void> _handleAndroidLocationPermission() async {
+  try {
+    // First check if we already have "always" permission
+    LocationPermission permission = await Geolocator.checkPermission();
+
+    if (permission == LocationPermission.always) {
+      // Already have permission, start monitoring
+      print("✅ Already have 'always' permission");
+      // await _startMonitoringIfNeeded();
+      return;
+    }
+
+    // Request permission - this shows dialog for "While using the app"
+    print("📱 Requesting location permission...");
+    permission = await Geolocator.requestPermission();
+
+    if (permission == LocationPermission.denied) {
+      // User denied permission
+      print("❌ User denied location permission");
+      await AutoLocationMonitor.showNotification(
+        '📍 Location Permission Required',
+        'Please grant location permission in settings for 24/7 monitoring.',
+      );
+      return;
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      // User permanently denied
+      print("❌ User permanently denied location permission");
+      await AutoLocationMonitor.showNotification(
+        '📍 Location Permission Required',
+        'Please enable location permission in app settings for 24/7 monitoring.',
+      );
+
+      // Optionally open app settings
+      if (await _shouldOpenSettings()) {
+        await Geolocator.openAppSettings();
+      }
+      return;
+    }
+
+    // Now we have at least "while in use" permission
+    // Ask user to enable "Allow all the time" for background monitoring
+    print("📱 Requesting 'Allow all the time' permission...");
+
+    // Show a dialog explaining why we need "always" permission
+    bool shouldOpenSettings = await _showBackgroundPermissionDialog();
+
+    if (shouldOpenSettings) {
+      // Open system settings where user can select "Allow all the time"
+      await Geolocator.openAppSettings();
+
+      // After returning from settings, check again
+      permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.always) {
+        print("✅ User granted 'always' permission");
+        // await _startMonitoringIfNeeded();
+      } else {
+        print("⚠️ User still doesn't have 'always' permission");
+        await AutoLocationMonitor.showNotification(
+          '⚠️ Limited Monitoring',
+          'For 24/7 monitoring, please enable "Allow all the time" in location settings.',
+        );
+      }
+    }
+  } catch (e) {
+    print("Error handling permission: $e");
+  }
+}
+
+/// Handle iOS location permission
+Future<void> _handleIOSLocationPermission() async {
+  LocationPermission permission = await Geolocator.checkPermission();
+
+  if (permission == LocationPermission.always) {
+    // Already have permission
+    // await _startMonitoringIfNeeded();
+    return;
+  }
+
+  // Request permission - on iOS this will show dialog with options
+  permission = await Geolocator.requestPermission();
+
+  if (permission == LocationPermission.always) {
+    // await _startMonitoringIfNeeded();
+  } else if (permission == LocationPermission.whileInUse) {
+    // User only granted while in use
+    print("⚠️ User granted only 'while in use' permission");
+    await AutoLocationMonitor.showNotification(
+      '⚠️ Limited Monitoring',
+      'For background monitoring, please select "Always" in location settings.',
+    );
+
+    // Open settings
+    if (await _shouldOpenSettings()) {
+      await Geolocator.openAppSettings();
+    }
+  } else {
+    // Denied
+    await AutoLocationMonitor.showNotification(
+      '📍 Location Permission Required',
+      'Please enable location permission in settings for 24/7 monitoring.',
+    );
+  }
+}
+
+/// Show dialog explaining why we need "always" permission
+Future<bool> _showBackgroundPermissionDialog() async {
+  // Since we're in main, we need to use a navigator key or store context
+  // For simplicity, we'll return true and rely on the notification
+  // In a real app, you'd want to show a proper dialog in the first screen
+
+  await AutoLocationMonitor.showNotification(
+    '🔔 Allow All the Time Required',
+    'For 24/7 monitoring, please select "Allow all the time" in location settings.',
+  );
+
+  return true; // Assume user will open settings
+}
+
+/// Check if we should open settings based on user preference
+Future<bool> _shouldOpenSettings() async {
   final prefs = await SharedPreferences.getInstance();
-  final wasActive = prefs.getBool('monitoring_active') ?? false;
+  final lastPrompt = prefs.getInt('last_permission_prompt') ?? 0;
+  final now = DateTime.now().millisecondsSinceEpoch;
 
-  if (wasActive) {
-    print("🔄 Device rebooted, re-registering WorkManager task");
-    await registerPeriodicTask();
+  // Don't prompt more than once every 24 hours
+  if (now - lastPrompt < 24 * 60 * 60 * 1000) {
+    return false;
+  }
+
+  await prefs.setInt('last_permission_prompt', now);
+  return true;
+}
+
+/// Start monitoring if conditions are met
+Future<void> _startMonitoringIfNeeded() async {
+  final prefs = await SharedPreferences.getInstance();
+  final hasFixedLocation = prefs.getString('fixed_location') != null;
+
+  if (hasFixedLocation) {
+    Future.microtask(() async {
+      print("main: Starting 24/7 monitoring automatically...");
+      await AutoLocationMonitor.startMonitoring();
+    });
+  } else {
+    print("main: No fixed location yet, monitoring will start after location is set");
+    // Show notification that they need to set work location
+    await AutoLocationMonitor.showNotification(
+      '📍 Set Work Location',
+      'Please set your work location to start 24/7 monitoring.',
+    );
   }
 }
 
-// ... rest of your functions (getNotificationToken, getDeviceID, MyApp) remain the same
-
+// Keep existing functions...
 Future<void> getNotificationToken(fcmToken, deviceId) async {
   String cutTableApi = "$ipAddress/api/userdevice";
 
