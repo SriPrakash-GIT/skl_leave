@@ -4,16 +4,7 @@ import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
 
-/// Default [FirebaseOptions] for use with your Firebase apps.
-///
-/// Example:
-/// ```dart
-/// import 'firebase_options.dart';
-/// // ...
-/// await Firebase.initializeApp(
-///   options: DefaultFirebaseOptions.currentPlatform,
-/// );
-/// ```
+
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
@@ -47,29 +38,30 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyBI2cKGZ7dgeiNx6S5_UEb6h1LMVfXqmV8',
-    appId: '1:448022630522:web:0fd163deefc05b66aeebc3',
-    messagingSenderId: '448022630522',
-    projectId: 'skl-notification',
-    authDomain: 'skl-notification.firebaseapp.com',
-    storageBucket: 'skl-notification.firebasestorage.app',
-    measurementId: 'G-9F9NE0HF6M',
+    apiKey: 'AIzaSyC4Y-EcOiBUehW3KxpBhXpG7IUJkPuJ7mY',
+    appId: '1:741311595283:web:3b3c14ce9a5eed8e4ed0e6',
+    messagingSenderId: '741311595283',
+    projectId: 'leave-app-7db96',
+    authDomain: 'leave-app-7db96.firebaseapp.com',
+    storageBucket: 'leave-app-7db96.firebasestorage.app',
+    measurementId: 'G-0MNM6LCKY0',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyDLKzcepnO1rbBd9j-YMxMqCG8RUyo3QTw',
-    appId: '1:448022630522:android:35881750aabeba92aeebc3',
-    messagingSenderId: '448022630522',
-    projectId: 'skl-notification',
-    storageBucket: 'skl-notification.firebasestorage.app',
+    apiKey: 'AIzaSyABVfUDKnuT27l88Nhc9qwxzNqRzb4lvRM',
+    appId: '1:741311595283:android:b347db4d74b887624ed0e6',
+    messagingSenderId: '741311595283',
+    projectId: 'leave-app-7db96',
+    storageBucket: 'leave-app-7db96.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyCetSuqB8SujRlCABj9vcF3NQjM_fPs8eI',
-    appId: '1:448022630522:ios:3b30515cae354410aeebc3',
-    messagingSenderId: '448022630522',
-    projectId: 'skl-notification',
-    storageBucket: 'skl-notification.firebasestorage.app',
+    apiKey: 'AIzaSyDQlh3EaJj_Cy0jvzg6fm2kl11JDKE5258',
+    appId: '1:741311595283:ios:505d915fe06587144ed0e6',
+    messagingSenderId: '741311595283',
+    projectId: 'leave-app-7db96',
+    storageBucket: 'leave-app-7db96.firebasestorage.app',
     iosBundleId: 'com.leaveApp.SklHrApp.sklLeave',
   );
+
 }

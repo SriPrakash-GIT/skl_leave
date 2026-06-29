@@ -1,47 +1,38 @@
 plugins {
     id("com.android.application")
-    // START: FlutterFire Configuration
     id("com.google.gms.google-services")
-    // END: FlutterFire Configuration
     id("kotlin-android")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
 android {
-    namespace = "com.leaveApp.SklHrApp.skl_leave"
-    compileSdk = flutter.compileSdkVersion
-    ndkVersion = "27.0.12077973"
-
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
-    }
-
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_11.toString()
-    }
+    namespace = "com.company.git_leave"
+    compileSdk = 36
+    ndkVersion = "28.2.13676358"
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.leaveApp.SklHrApp.skl_leave"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        applicationId = "com.company.git_leave"
+        minSdk = flutter.minSdkVersion              // ← FIXED: hardcoded 23, removed flutter.minSdkVersion
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
+    compileOptions {
+        isCoreLibraryDesugaringEnabled = true
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
-
             isMinifyEnabled = false
             isShrinkResources = false
-
         }
     }
 }
@@ -51,20 +42,23 @@ flutter {
 }
 
 dependencies {
-    // Kotlin standard library
-    implementation("org.jetbrains.kotlin:kotlin-stdlib:1.9.24")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 
-    // Google Play Location Services
-    implementation("com.google.android.gms:play-services-location:21.0.1")
+    implementation("org.jetbrains.kotlin:kotlin-stdlib:2.1.0")
 
-    // AndroidX
-    implementation("androidx.core:core-ktx:1.12.0")
+    // ✅ Updated to SDK 36 compatible versions
+    implementation("androidx.core:core-ktx:1.16.0")           // ← was 1.13.1, needs SDK 36
     implementation("androidx.appcompat:appcompat:1.7.0")
-    implementation("com.google.android.material:material:1.11.0")
+    implementation("com.google.android.material:material:1.12.0")
 
-    // Flutter Firebase / plugins if needed
-    implementation(platform("com.google.firebase:firebase-bom:32.2.2"))
+    // Google Play Services
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+    implementation("com.google.android.gms:play-services-maps:19.0.0")
+    implementation("com.google.android.gms:play-services-base:18.5.0")
+
+    // Firebase BOM — single version manages everything below
+    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
     implementation("com.google.firebase:firebase-analytics")
-    implementation("com.google.android.gms:play-services-base:18.2.0")
-    implementation("com.google.android.gms:play-services-maps:18")
+    implementation("com.google.firebase:firebase-messaging")
+    implementation("com.google.firebase:firebase-firestore")
 }

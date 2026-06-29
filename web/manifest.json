@@ -1,6 +1,6 @@
 {
-    "name": "skl_leave",
-    "short_name": "skl_leave",
+    "name": "GIT Leave App",
+    "short_name": "GIT_leave",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
